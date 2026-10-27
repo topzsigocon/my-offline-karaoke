@@ -32,10 +32,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-    private static final int PICK_FOLDER = 101;\n    private static final int PICK_SOUNDFONT = 102;\n    private static final String PREFS = "karaoke_settings";\n    private static final String PREF_SOUNDFONT_URI = "soundfont_uri";
+    private static final int PICK_FOLDER = 101;
+    private static final int PICK_SOUNDFONT = 102;
+    private static final String PREFS = "karaoke_settings";
+    private static final String PREF_SOUNDFONT_URI = "soundfont_uri";
     private LinearLayout root, songList;
     private EditText numberInput, searchInput;
-    private TextView statusText, nowPlayingText, queueText, soundFontText;\n    private Uri customSoundFontUri;
+    private TextView statusText, nowPlayingText, queueText, soundFontText;
+    private Uri customSoundFontUri;
     private Uri selectedTree;
     private final List<Song> songs = new ArrayList<>();
     private final List<Song> queue = new ArrayList<>();

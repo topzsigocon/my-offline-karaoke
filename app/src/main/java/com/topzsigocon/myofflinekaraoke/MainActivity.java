@@ -5,6 +5,9 @@ import android.os.Bundle;
 import android.content.Intent;
 import android.net.Uri;
 import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
+import android.content.ContentValues;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.view.Gravity;
@@ -46,8 +49,9 @@ public class MainActivity extends Activity {
     private final List<Song> queue = new ArrayList<>();
     private int currentQueueIndex = -1;
     private final ExecutorService scanExecutor = Executors.newSingleThreadExecutor();
-    private static final int MAX_SONGS = 500;
-    private static final int MAX_DEPTH = 20;
+    private static final int MAX_VISIBLE_ROWS = 100;
+    private static final int MAX_DEPTH = 30;
+    private SongDb songDb;
 
     static class Song {
         String number, title, artist, fileName;
@@ -59,7 +63,9 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        songDb = new SongDb(this);
         buildUi();
+        loadCachedSongs();
         String savedFolder = getSharedPreferences(PREFS, MODE_PRIVATE)
             .getString(PREF_FOLDER_URI, null);
         if (savedFolder != null) {
@@ -72,8 +78,13 @@ public class MainActivity extends Activity {
                 }
             }
             if (hasSavedPermission) {
-                statusText.setText("Awtomatikong binubuksan ang huling song folder…");
-                scanFolder();
+                if (songs.isEmpty()) {
+                    statusText.setText("Unang scan ng song folder…");
+                    scanFolder();
+                } else {
+                    statusText.setText("Naka-load ang " + songs.size() +
+                        " kanta mula sa naka-save na catalog. Pindutin ang folder button para i-refresh ang library.");
+                }
             } else {
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                     .remove(PREF_FOLDER_URI)
@@ -465,8 +476,9 @@ public class MainActivity extends Activity {
                 scanChildren(tree, childrenUri, projection, found, 0);
                 Collections.sort(found, Comparator.comparing(song -> song.title.toLowerCase(Locale.ROOT)));
                 for (int i = 0; i < found.size(); i++) {
-                    found.get(i).number = String.format(Locale.US, "%04d", i + 1);
+                    found.get(i).number = String.format(Locale.US, "%05d", i + 1);
                 }
+                songDb.replaceAll(found);
             } catch (Exception e) {
                 error = e.getMessage() == null ? "Hindi mabasa ang folder." : e.getMessage();
             }
@@ -479,9 +491,8 @@ public class MainActivity extends Activity {
                     statusText.setText("Hindi ma-scan ang folder. Pumili ng folder na may MIDI/KAR files.");
                     Toast.makeText(this, "Hindi mabasa ang folder: " + finalError, Toast.LENGTH_LONG).show();
                 } else {
-                    statusText.setText("Nakita: " + songs.size() + " MIDI/KAR file(s). " +
-                        (songs.size() >= MAX_SONGS ? "Limit na " + MAX_SONGS + " kanta ang ipinapakita. " : "") +
-                        "Auto-number ayon sa filename.");
+                    statusText.setText("Catalog updated: " + songs.size() +
+                        " MIDI/KAR file(s). Naka-save sa phone para mabilis buksan sa susunod.");
                 }
                 renderSongs();
             });
@@ -490,10 +501,10 @@ public class MainActivity extends Activity {
 
     private void scanChildren(Uri tree, Uri childrenUri, String[] projection,
                               List<Song> found, int depth) {
-        if (depth > MAX_DEPTH || found.size() >= MAX_SONGS) return;
+        if (depth > MAX_DEPTH) return;
         try (Cursor c = getContentResolver().query(childrenUri, projection, null, null, null)) {
             if (c == null) return;
-            while (c.moveToNext() && found.size() < MAX_SONGS) {
+            while (c.moveToNext()) {
                 String id = c.getString(0);
                 String name = c.getString(1);
                 String mime = c.getString(2);
@@ -515,18 +526,93 @@ public class MainActivity extends Activity {
         }
     }
 
+
+    private static class SongDb extends SQLiteOpenHelper {
+        private static final String DB_NAME = "offline_karaoke_catalog.db";
+        private static final int DB_VERSION = 1;
+        private static final String TABLE = "songs";
+
+        SongDb(android.content.Context context) {
+            super(context, DB_NAME, null, DB_VERSION);
+        }
+
+        @Override public void onCreate(SQLiteDatabase db) {
+            db.execSQL("CREATE TABLE " + TABLE + " (" +
+                "number TEXT PRIMARY KEY, title TEXT NOT NULL, artist TEXT, " +
+                "filename TEXT NOT NULL, uri TEXT NOT NULL)");
+            db.execSQL("CREATE INDEX idx_song_title ON " + TABLE + "(title COLLATE NOCASE)");
+            db.execSQL("CREATE INDEX idx_song_filename ON " + TABLE + "(filename COLLATE NOCASE)");
+        }
+
+        @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+            db.execSQL("DROP TABLE IF EXISTS " + TABLE);
+            onCreate(db);
+        }
+
+        synchronized void replaceAll(List<Song> items) {
+            SQLiteDatabase db = getWritableDatabase();
+            db.beginTransaction();
+            try {
+                db.delete(TABLE, null, null);
+                ContentValues values = new ContentValues();
+                for (Song song : items) {
+                    values.clear();
+                    values.put("number", song.number);
+                    values.put("title", song.title);
+                    values.put("artist", song.artist == null ? "" : song.artist);
+                    values.put("filename", song.fileName);
+                    values.put("uri", song.uri.toString());
+                    db.insertOrThrow(TABLE, null, values);
+                }
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
+        }
+
+        synchronized List<Song> readAll() {
+            List<Song> items = new ArrayList<>();
+            SQLiteDatabase db = getReadableDatabase();
+            try (Cursor c = db.query(TABLE,
+                    new String[]{"number", "title", "artist", "filename", "uri"},
+                    null, null, null, null, "title COLLATE NOCASE ASC")) {
+                while (c.moveToNext()) {
+                    items.add(new Song(c.getString(0), c.getString(1), c.getString(2),
+                        c.getString(3), Uri.parse(c.getString(4))));
+                }
+            }
+            return items;
+        }
+    }
+
     @Override protected void onDestroy() {
         scanExecutor.shutdownNow();
+        if (songDb != null) songDb.close();
         super.onDestroy();
+    }
+
+    private void loadCachedSongs() {
+        try {
+            List<Song> cached = songDb.readAll();
+            songs.clear();
+            songs.addAll(cached);
+        } catch (Exception e) {
+            // If the cache is unavailable, the user can rescan the selected folder.
+        }
     }
 
     private void renderSongs() {
         if (songList == null) return;
         songList.removeAllViews();
         String q = searchInput == null ? "" : searchInput.getText().toString().trim().toLowerCase(Locale.ROOT);
+        int shown = 0;
+        int matches = 0;
         for (Song song : songs) {
             if (!q.isEmpty() && !song.title.toLowerCase(Locale.ROOT).contains(q)
-                    && !song.fileName.toLowerCase(Locale.ROOT).contains(q)) continue;
+                    && !song.fileName.toLowerCase(Locale.ROOT).contains(q)
+                    && !song.number.contains(q)) continue;
+            matches++;
+            if (shown >= MAX_VISIBLE_ROWS) continue;
             LinearLayout card = new LinearLayout(this);
             card.setOrientation(LinearLayout.VERTICAL);
             card.setPadding(dp(12), dp(8), dp(12), dp(8));
@@ -542,17 +628,30 @@ public class MainActivity extends Activity {
                 numberInput.setText(song.number);
                 numberInput.setSelection(numberInput.getText().length());
             });
+            shown++;
         }
         if (songs.isEmpty()) {
-            TextView empty = label("Wala pang kanta. Pindutin ang “Piliin ang SD Card Folder”.", 13, Color.LTGRAY, false);
+            TextView empty = label("Wala pang naka-save na kanta. Pindutin ang “Piliin ang SD Card Folder” para mag-scan.", 13, Color.LTGRAY, false);
             empty.setPadding(dp(8), dp(12), dp(8), dp(12));
             songList.addView(empty);
+        } else if (matches == 0) {
+            TextView empty = label("Walang tugmang kanta sa search.", 13, Color.LTGRAY, false);
+            empty.setPadding(dp(8), dp(12), dp(8), dp(12));
+            songList.addView(empty);
+        } else if (matches > MAX_VISIBLE_ROWS) {
+            TextView note = label("May " + matches + " resulta. Ipinapakita ang unang " + MAX_VISIBLE_ROWS +
+                " lang para hindi bumagal ang phone. Gamitin ang search o song number para mahanap ang iba.", 12,
+                Color.rgb(170,190,220), false);
+            note.setPadding(dp(8), dp(8), dp(8), dp(12));
+            songList.addView(note, 0);
         }
     }
 
     private Song findSong(String number) {
         String n = number.trim();
-        for (Song s : songs) if (s.number.equals(n) || s.number.equals(String.format(Locale.US, "%04d", parseIntSafe(n)))) return s;
+        if (n.isEmpty()) return null;
+        String padded = String.format(Locale.US, "%05d", parseIntSafe(n));
+        for (Song s : songs) if (s.number.equals(n) || s.number.equals(padded)) return s;
         return null;
     }
 

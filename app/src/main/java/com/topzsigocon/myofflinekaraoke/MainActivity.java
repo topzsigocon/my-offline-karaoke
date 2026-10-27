@@ -18,7 +18,10 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import android.widget.Toast;\nimport android.app.AlertDialog;\nimport java.io.ByteArrayOutputStream;\nimport java.io.InputStream;
+import android.widget.Toast;
+import android.app.AlertDialog;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -132,6 +135,9 @@ public class MainActivity extends Activity {
         actions.addView(folder, new LinearLayout.LayoutParams(0, dp(48), 2));
         actions.addView(next, new LinearLayout.LayoutParams(0, dp(48), 1));
         root.addView(actions);
+        Button lyricsCheck = button("Lyrics Check");
+        root.addView(lyricsCheck, new LinearLayout.LayoutParams(-1, dp(44)));
+        lyricsCheck.setOnClickListener(v -> showLyricsForSelectedSong());
         folder.setOnClickListener(v -> chooseFolder());
         next.setOnClickListener(v -> playNextQueued());
 

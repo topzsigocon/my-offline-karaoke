@@ -64,8 +64,24 @@ public class MainActivity extends Activity {
             .getString(PREF_FOLDER_URI, null);
         if (savedFolder != null) {
             selectedTree = Uri.parse(savedFolder);
-            statusText.setText("Binubuksan ang huling napiling song folder…");
-            scanFolder();
+            boolean hasSavedPermission = false;
+            for (android.content.UriPermission permission : getContentResolver().getPersistedUriPermissions()) {
+                if (permission.getUri().equals(selectedTree) && permission.isReadPermission()) {
+                    hasSavedPermission = true;
+                    break;
+                }
+            }
+            if (hasSavedPermission) {
+                statusText.setText("Awtomatikong binubuksan ang huling song folder…");
+                scanFolder();
+            } else {
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .remove(PREF_FOLDER_URI)
+                    .remove("song_folder_flags")
+                    .apply();
+                statusText.setText("Nawala ang access sa dating folder. Piliin muli ang song folder.");
+                renderSongs();
+            }
         } else {
             renderSongs();
         }
@@ -274,13 +290,31 @@ public class MainActivity extends Activity {
 
         if (requestCode == PICK_FOLDER && resultCode == RESULT_OK && data != null && data.getData() != null) {
             selectedTree = data.getData();
+            int grantedFlags = data.getFlags() &
+                (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            boolean permissionSaved = false;
             try {
-                getContentResolver().takePersistableUriPermission(selectedTree,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            } catch (Exception ignored) {}
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                .putString(PREF_FOLDER_URI, selectedTree.toString()).apply();
-            scanFolder();
+                getContentResolver().takePersistableUriPermission(selectedTree, grantedFlags);
+                permissionSaved = true;
+            } catch (Exception e) {
+                Toast.makeText(this,
+                    "Hindi na-save ang access sa folder. Piliin ulit ang folder at payagan ang access.",
+                    Toast.LENGTH_LONG).show();
+            }
+
+            if (permissionSaved && (grantedFlags & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0) {
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putString(PREF_FOLDER_URI, selectedTree.toString())
+                    .putInt("song_folder_flags", grantedFlags)
+                    .apply();
+                scanFolder();
+            } else {
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .remove(PREF_FOLDER_URI)
+                    .remove("song_folder_flags")
+                    .apply();
+                statusText.setText("Hindi na-save ang folder access. Piliin ulit ang folder.");
+            }
         }
     }
 

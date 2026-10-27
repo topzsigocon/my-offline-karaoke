@@ -26,3 +26,9 @@ Push to `main` (or `master`) to trigger GitHub Actions, or run the workflow manu
 This build adds a **Lyrics Check** button to inspect embedded lyric/text meta-events in a selected MIDI/KAR file. It is offline and keeps the existing song-list workflow.
 
 **Important limitation:** this stage does NOT yet synthesize/play MIDI audio, synchronize/highlight words in real time, or play video. Those require a MIDI synthesizer/audio engine and playback timing integration, which must be added and tested as a separate stage.
+
+
+## Stage 2: SoundFont selection settings foundation
+Adds a SoundFont Settings screen where users can select an `.sf2` or `.sf3` file using Android's document picker (including SD card providers), persist the selected file URI, and restore the default selection.
+
+**Important:** This is only the settings/file-selection foundation. The current app still does NOT synthesize or play MIDI audio, and selecting a SoundFont does not yet change audio. A compatible FluidSynth/native integration and an appropriately licensed bundled SoundFont must be added and tested in a later stage before MIDI playback works.

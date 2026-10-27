@@ -32,10 +32,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-    private static final int PICK_FOLDER = 101;
+    private static final int PICK_FOLDER = 101;\n    private static final int PICK_SOUNDFONT = 102;\n    private static final String PREFS = "karaoke_settings";\n    private static final String PREF_SOUNDFONT_URI = "soundfont_uri";
     private LinearLayout root, songList;
     private EditText numberInput, searchInput;
-    private TextView statusText, nowPlayingText, queueText;
+    private TextView statusText, nowPlayingText, queueText, soundFontText;\n    private Uri customSoundFontUri;
     private Uri selectedTree;
     private final List<Song> songs = new ArrayList<>();
     private final List<Song> queue = new ArrayList<>();
@@ -138,6 +138,12 @@ public class MainActivity extends Activity {
         Button lyricsCheck = button("Lyrics Check");
         root.addView(lyricsCheck, new LinearLayout.LayoutParams(-1, dp(44)));
         lyricsCheck.setOnClickListener(v -> showLyricsForSelectedSong());
+
+        Button soundFontSettings = button("SoundFont Settings");
+        root.addView(soundFontSettings, new LinearLayout.LayoutParams(-1, dp(44)));
+        soundFontText = label("SoundFont: Built-in default (synthesizer not yet connected)", 12, Color.rgb(170,190,220), false);
+        root.addView(soundFontText, new LinearLayout.LayoutParams(-1, -2));
+        soundFontSettings.setOnClickListener(v -> showSoundFontSettings());
         folder.setOnClickListener(v -> chooseFolder());
         next.setOnClickListener(v -> playNextQueued());
 
@@ -176,6 +182,99 @@ public class MainActivity extends Activity {
         setContentView(root);
     }
 
+
+
+    private void loadSoundFontSetting() {
+        String saved = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_SOUNDFONT_URI, null);
+        if (saved != null) {
+            try { customSoundFontUri = Uri.parse(saved); } catch (Exception ignored) { customSoundFontUri = null; }
+        }
+        updateSoundFontLabel();
+    }
+
+    private void updateSoundFontLabel() {
+        if (soundFontText == null) return;
+        if (customSoundFontUri != null) {
+            String name = queryDisplayName(customSoundFontUri);
+            soundFontText.setText("SoundFont: Custom • " + name + "\\nSaved for future playback integration");
+        } else {
+            soundFontText.setText("SoundFont: Built-in default (synthesizer not yet connected)");
+        }
+    }
+
+    private void showSoundFontSettings() {
+        String current = customSoundFontUri == null
+                ? "Kasalukuyan: Built-in default\\n(Paalaala: hindi pa nakakabit ang audio synthesizer.)"
+                : "Kasalukuyan: " + queryDisplayName(customSoundFontUri)
+                  + "\\n(Paalaala: naka-save ang napiling file; hindi pa ito ginagamit sa pagtugtog.)";
+        String[] options = {"Pumili ng .SF2 mula sa phone/SD card", "Gamitin ang built-in default", "Kanselahin"};
+        new AlertDialog.Builder(this)
+            .setTitle("SoundFont Settings")
+            .setMessage(current)
+            .setItems(options, (dialog, which) -> {
+                if (which == 0) chooseSoundFont();
+                else if (which == 1) {
+                    customSoundFontUri = null;
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove(PREF_SOUNDFONT_URI).apply();
+                    updateSoundFontLabel();
+                    Toast.makeText(this, "Pinili ang built-in default setting.", Toast.LENGTH_SHORT).show();
+                }
+            }).show();
+    }
+
+    private void chooseSoundFont() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        try {
+            startActivityForResult(intent, PICK_SOUNDFONT);
+        } catch (Exception e) {
+            Toast.makeText(this, "Hindi mabuksan ang file picker.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PICK_SOUNDFONT && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            Uri uri = data.getData();
+            String name = queryDisplayName(uri);
+            if (!name.toLowerCase(Locale.ROOT).endsWith(".sf2") && !name.toLowerCase(Locale.ROOT).endsWith(".sf3")) {
+                new AlertDialog.Builder(this)
+                    .setTitle("Hindi SoundFont file")
+                    .setMessage("Pumili ng file na nagtatapos sa .sf2 o .sf3.")
+                    .setPositiveButton("OK", null).show();
+                return;
+            }
+            try {
+                int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                getContentResolver().takePersistableUriPermission(uri, flags & Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (Exception ignored) {}
+            customSoundFontUri = uri;
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_SOUNDFONT_URI, uri.toString()).apply();
+            updateSoundFontLabel();
+            new AlertDialog.Builder(this)
+                .setTitle("SoundFont saved")
+                .setMessage("Napili: " + name + "\\nNai-save ang pagpili para sa susunod na pagbukas ng app. Hindi pa ginagamit ang SoundFont sa playback sa build na ito.")
+                .setPositiveButton("OK", null).show();
+        }
+    }
+
+    private String queryDisplayName(Uri uri) {
+        Cursor c = null;
+        try {
+            c = getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null);
+            if (c != null && c.moveToFirst()) {
+                int ix = c.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                if (ix >= 0) return c.getString(ix);
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (c != null) c.close();
+        }
+        String last = uri.getLastPathSegment();
+        return last == null ? "SoundFont file" : last;
+    }
 
     private void showLyricsForSelectedSong() {
         String n = numberInput.getText().toString().trim();

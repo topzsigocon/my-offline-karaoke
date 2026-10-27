@@ -20,3 +20,9 @@ These are planned next milestones; do not treat this prototype as a finished kar
 
 ## Build
 Push to `main` (or `master`) to trigger GitHub Actions, or run the workflow manually from Actions. Download the `my-offline-karaoke-debug-apk` artifact from a successful run.
+
+
+## Stage 1: Embedded MIDI/KAR lyrics inspection
+This build adds a **Lyrics Check** button to inspect embedded lyric/text meta-events in a selected MIDI/KAR file. It is offline and keeps the existing song-list workflow.
+
+**Important limitation:** this stage does NOT yet synthesize/play MIDI audio, synchronize/highlight words in real time, or play video. Those require a MIDI synthesizer/audio engine and playback timing integration, which must be added and tested as a separate stage.

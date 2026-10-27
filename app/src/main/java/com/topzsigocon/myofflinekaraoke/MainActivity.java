@@ -18,7 +18,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import android.widget.Toast;
+import android.widget.Toast;\nimport android.app.AlertDialog;\nimport java.io.ByteArrayOutputStream;\nimport java.io.InputStream;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -168,6 +168,113 @@ public class MainActivity extends Activity {
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
         setContentView(root);
+    }
+
+
+    private void showLyricsForSelectedSong() {
+        String n = numberInput.getText().toString().trim();
+        Song chosen = null;
+        if (!n.isEmpty()) {
+            for (Song song : songs) if (song.number.equals(n)) { chosen = song; break; }
+        }
+        if (chosen == null && !songs.isEmpty()) chosen = songs.get(0);
+        if (chosen == null) {
+            Toast.makeText(this, "Pumili muna ng folder at kanta.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        final Song selected = chosen;
+        statusText.setText("Sinusuri ang lyrics track…");
+        scanExecutor.execute(() -> {
+            String result;
+            try (InputStream in = getContentResolver().openInputStream(selected.uri)) {
+                if (in == null) throw new Exception("Hindi mabuksan ang file.");
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                byte[] buf = new byte[8192]; int count;
+                while ((count = in.read(buf)) != -1 && out.size() < 16 * 1024 * 1024) out.write(buf, 0, count);
+                result = MidiLyricsReader.extract(out.toByteArray());
+            } catch (Exception e) {
+                result = "Hindi mabasa ang MIDI file: " + (e.getMessage() == null ? "unknown error" : e.getMessage());
+            }
+            final String display = result;
+            runOnUiThread(() -> new AlertDialog.Builder(this)
+                .setTitle("Lyrics Check • " + selected.title)
+                .setMessage(display)
+                .setPositiveButton("OK", null)
+                .show());
+        });
+    }
+
+    /**
+     * Lightweight Standard MIDI File reader for embedded lyric/text meta events.
+     * This previews embedded lyrics only; it is not an audio synthesizer.
+     */
+    static class MidiLyricsReader {
+        static String extract(byte[] data) throws Exception {
+            if (data.length < 14 || data[0]!='M' || data[1]!='T' || data[2]!='h' || data[3]!='d')
+                return "Hindi mukhang valid na MIDI file.";
+            int headerLen = int32(data,4);
+            int tracks = u16(data,10);
+            int pos = 8 + headerLen;
+            StringBuilder lyrics = new StringBuilder();
+            int lyricCount = 0;
+            for (int t=0; t<tracks && pos+8<=data.length; t++) {
+                if (data[pos]!='M' || data[pos+1]!='T' || data[pos+2]!='r' || data[pos+3]!='k')
+                    throw new Exception("Hindi mabasa ang MIDI track.");
+                int len = int32(data,pos+4); pos += 8;
+                int end = Math.min(data.length, pos + Math.max(0,len));
+                int p = pos; int running = -1;
+                while (p < end) {
+                    long[] vlq = readVlq(data,p,end); long delta=vlq[0]; p=(int)vlq[1];
+                    if (p>=end) break;
+                    int status = data[p]&255;
+                    if (status < 0x80) {
+                        if (running < 0) break;
+                        status = running;
+                    } else { p++; if (status < 0xF0) running=status; }
+                    if (status == 0xFF) {
+                        if (p>=end) break;
+                        int type=data[p++]&255;
+                        long[] l=readVlq(data,p,end); int n=(int)Math.min(l[0], end-l[1]); p=(int)l[1];
+                        if (n<0) break;
+                        if (type==0x05 || type==0x01) {
+                            String text = new String(data,p,n,java.nio.charset.Charset.forName("UTF-8"));
+                            text = clean(text);
+                            if (!text.isEmpty() && (type==0x05 || looksLikeLyric(text))) {
+                                if (lyrics.length()>0) lyrics.append("\n");
+                                lyrics.append(text); lyricCount++;
+                            }
+                        }
+                        p += n;
+                        if (type==0x2F) break;
+                    } else if (status==0xF0 || status==0xF7) {
+                        long[] l=readVlq(data,p,end); p=(int)Math.min(end,l[1]+l[0]);
+                    } else {
+                        int command=status & 0xF0;
+                        int bytes=(command==0xC0 || command==0xD0)?1:2;
+                        p += bytes;
+                    }
+                }
+                pos=end;
+            }
+            if (lyricCount==0) return "Walang nakitang naka-embed na lyrics sa file na ito.\n\nMaaaring may lyrics sa ibang format, o instrumental MIDI ito.";
+            String body=lyrics.toString();
+            if (body.length()>9000) body=body.substring(0,9000)+"\\n…(pinutol ang preview)";
+            return "May nakita akong " + lyricCount + " lyric/text event(s).\\n\\n" + body +
+                "\\n\\nPaalala: preview pa lang ito. Hindi pa kasama sa build na ito ang MIDI audio synthesizer o real-time word highlighting.";
+        }
+        static boolean looksLikeLyric(String s) {
+            return s.matches(".*[A-Za-z].*") && !s.startsWith("@");
+        }
+        static String clean(String s) {
+            return s.replace("\u0000","").replace("\r","").trim();
+        }
+        static int u16(byte[] b,int p) { return ((b[p]&255)<<8)|(b[p+1]&255); }
+        static int int32(byte[] b,int p) { return ((b[p]&255)<<24)|((b[p+1]&255)<<16)|((b[p+2]&255)<<8)|(b[p+3]&255); }
+        static long[] readVlq(byte[] b,int p,int end) throws Exception {
+            long v=0; int count=0;
+            while(p<end && count++<4) { int x=b[p++]&255; v=(v<<7)|(x&127); if((x&128)==0) return new long[]{v,p}; }
+            throw new Exception("Hindi valid ang MIDI event length.");
+        }
     }
 
     private void chooseFolder() {

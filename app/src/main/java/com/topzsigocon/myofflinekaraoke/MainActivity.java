@@ -262,6 +262,15 @@ public class MainActivity extends Activity {
                 .setMessage("Napili: " + name + "\\nNai-save ang pagpili para sa susunod na pagbukas ng app. Hindi pa ginagamit ang SoundFont sa playback sa build na ito.")
                 .setPositiveButton("OK", null).show();
         }
+
+        if (requestCode == PICK_FOLDER && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            selectedTree = data.getData();
+            try {
+                getContentResolver().takePersistableUriPermission(selectedTree,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (Exception ignored) {}
+            scanFolder();
+        }
     }
 
     private String queryDisplayName(Uri uri) {
@@ -390,18 +399,6 @@ public class MainActivity extends Activity {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
         i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         startActivityForResult(i, PICK_FOLDER);
-    }
-
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == PICK_FOLDER && resultCode == RESULT_OK && data != null) {
-            selectedTree = data.getData();
-            try {
-                getContentResolver().takePersistableUriPermission(selectedTree,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            } catch (Exception ignored) {}
-            scanFolder();
-        }
     }
 
     private void scanFolder() {

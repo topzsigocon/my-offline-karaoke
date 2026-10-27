@@ -1,17 +1,13 @@
 name: Build Android APK
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
-
-permissions:
-  contents: read
+  push:
+    branches: [ "main", "master" ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,6 +20,7 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
+
         with:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
@@ -33,11 +30,11 @@ jobs:
           gradle-version: '8.9'
 
       - name: Build debug APK
-        run: gradle assembleDebug
+        run: gradle assembleDebug --no-daemon
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: my-offline-karaoke-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: my-offline-karaoke-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

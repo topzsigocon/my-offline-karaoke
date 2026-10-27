@@ -36,6 +36,7 @@ public class MainActivity extends Activity {
     private static final int PICK_SOUNDFONT = 102;
     private static final String PREFS = "karaoke_settings";
     private static final String PREF_SOUNDFONT_URI = "soundfont_uri";
+    private static final String PREF_FOLDER_URI = "song_folder_uri";
     private LinearLayout root, songList;
     private EditText numberInput, searchInput;
     private TextView statusText, nowPlayingText, queueText, soundFontText;
@@ -59,7 +60,15 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         buildUi();
-        renderSongs();
+        String savedFolder = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getString(PREF_FOLDER_URI, null);
+        if (savedFolder != null) {
+            selectedTree = Uri.parse(savedFolder);
+            statusText.setText("Binubuksan ang huling napiling song folder…");
+            scanFolder();
+        } else {
+            renderSongs();
+        }
     }
 
     private int dp(float v) { return (int)(v * getResources().getDisplayMetrics().density + 0.5f); }
@@ -269,6 +278,8 @@ public class MainActivity extends Activity {
                 getContentResolver().takePersistableUriPermission(selectedTree,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION);
             } catch (Exception ignored) {}
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putString(PREF_FOLDER_URI, selectedTree.toString()).apply();
             scanFolder();
         }
     }

@@ -51,7 +51,7 @@ public class FloatingKaraokeService extends Service {
 
     private void createBubble() {
         bubble = text("🎤", 25, Color.WHITE, true);
-        bubble.setGravity(Gravity.CENTER); bubble.setBackground(rounded(Color.rgb(218, 48, 83), 100));
+        ((TextView) bubble).setGravity(Gravity.CENTER); bubble.setBackground(rounded(Color.rgb(218, 48, 83), 100));
         bubbleParams = new WindowManager.LayoutParams(dp(58), dp(58), windowType(),
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT);

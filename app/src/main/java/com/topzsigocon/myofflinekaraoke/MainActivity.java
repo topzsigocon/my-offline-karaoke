@@ -23,6 +23,10 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.app.AlertDialog;
+import android.provider.Settings;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 
@@ -52,6 +56,7 @@ public class MainActivity extends Activity {
     private static final int MAX_VISIBLE_ROWS = 100;
     private static final int MAX_DEPTH = 30;
     private SongDb songDb;
+    private BroadcastReceiver floatingRemoteReceiver;
 
     static class Song {
         String number, title, artist, fileName;
@@ -65,6 +70,7 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         songDb = new SongDb(this);
         buildUi();
+        registerFloatingRemoteReceiver();
         loadCachedSongs();
         String savedFolder = getSharedPreferences(PREFS, MODE_PRIVATE)
             .getString(PREF_FOLDER_URI, null);
@@ -175,6 +181,10 @@ public class MainActivity extends Activity {
         actions.addView(folder, new LinearLayout.LayoutParams(0, dp(48), 2));
         actions.addView(next, new LinearLayout.LayoutParams(0, dp(48), 1));
         root.addView(actions);
+        Button floating = button("🎤 Enable Floating Karaoke Controller");
+        root.addView(floating, new LinearLayout.LayoutParams(-1, dp(48)));
+        floating.setOnClickListener(v -> enableFloatingController());
+
         Button lyricsCheck = button("Lyrics Check");
         root.addView(lyricsCheck, new LinearLayout.LayoutParams(-1, dp(44)));
         lyricsCheck.setOnClickListener(v -> showLyricsForSelectedSong());
@@ -223,6 +233,32 @@ public class MainActivity extends Activity {
     }
 
 
+
+
+    private void enableFloatingController() {
+        if (android.os.Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
+            try { startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()))); }
+            catch (Exception e) { Toast.makeText(this, "Buksan ang Settings at payagan ang Display over other apps.", Toast.LENGTH_LONG).show(); }
+            return;
+        }
+        try { startService(new Intent(this, FloatingKaraokeService.class));
+            Toast.makeText(this, "Lumitaw na ang floating karaoke bubble. Pindutin para magbukas ang controller.", Toast.LENGTH_LONG).show();
+        } catch (Exception e) { Toast.makeText(this, "Hindi masimulan ang floating controller.", Toast.LENGTH_LONG).show(); }
+    }
+
+    private void registerFloatingRemoteReceiver() {
+        floatingRemoteReceiver = new BroadcastReceiver() {
+            @Override public void onReceive(Context context, Intent intent) {
+                String command = intent.getStringExtra(FloatingKaraokeService.EXTRA_COMMAND);
+                String number = intent.getStringExtra(FloatingKaraokeService.EXTRA_NUMBER);
+                if (FloatingKaraokeService.CMD_NEXT.equals(command)) { playNextQueued(); return; }
+                if (numberInput != null) numberInput.setText(number == null ? "" : number);
+                if (FloatingKaraokeService.CMD_ADD.equals(command)) findByNumber(true, false);
+                else if (FloatingKaraokeService.CMD_PLAY.equals(command)) findByNumber(false, true);
+            }
+        };
+        registerReceiver(floatingRemoteReceiver, new IntentFilter(FloatingKaraokeService.ACTION_REMOTE));
+    }
 
     private void loadSoundFontSetting() {
         String saved = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_SOUNDFONT_URI, null);
@@ -587,6 +623,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         scanExecutor.shutdownNow();
+        if (floatingRemoteReceiver != null) { try { unregisterReceiver(floatingRemoteReceiver); } catch (Exception ignored) {} }
         if (songDb != null) songDb.close();
         super.onDestroy();
     }

@@ -235,15 +235,40 @@ public class MainActivity extends Activity {
 
 
 
+    private boolean hasFloatingPermission() {
+        return android.os.Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(this);
+    }
+
+    private void startFloatingControllerIfAllowed() {
+        if (!hasFloatingPermission()) return;
+        try {
+            startService(new Intent(this, FloatingKaraokeService.class));
+        } catch (Exception e) {
+            Toast.makeText(this, "Hindi masimulan ang floating controller.", Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void enableFloatingController() {
-        if (android.os.Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
+        if (!hasFloatingPermission()) {
             try { startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()))); }
             catch (Exception e) { Toast.makeText(this, "Buksan ang Settings at payagan ang Display over other apps.", Toast.LENGTH_LONG).show(); }
             return;
         }
-        try { startService(new Intent(this, FloatingKaraokeService.class));
-            Toast.makeText(this, "Lumitaw na ang floating karaoke bubble. Pindutin para magbukas ang controller.", Toast.LENGTH_LONG).show();
-        } catch (Exception e) { Toast.makeText(this, "Hindi masimulan ang floating controller.", Toast.LENGTH_LONG).show(); }
+        startFloatingControllerIfAllowed();
+        Toast.makeText(this, "Lumitaw ang floating karaoke bubble habang bukas ang app.", Toast.LENGTH_LONG).show();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        // Show the floating bubble only while this app is in the foreground.
+        // This also starts it after returning from the overlay-permission Settings screen.
+        startFloatingControllerIfAllowed();
+    }
+
+    @Override protected void onStop() {
+        // Remove the bubble when the user leaves or exits the app. It will return on resume.
+        stopService(new Intent(this, FloatingKaraokeService.class));
+        super.onStop();
     }
 
     private void registerFloatingRemoteReceiver() {
@@ -622,6 +647,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        stopService(new Intent(this, FloatingKaraokeService.class));
         scanExecutor.shutdownNow();
         if (floatingRemoteReceiver != null) { try { unregisterReceiver(floatingRemoteReceiver); } catch (Exception ignored) {} }
         if (songDb != null) songDb.close();

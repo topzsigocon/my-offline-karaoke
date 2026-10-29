@@ -1,11 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <application
         android:allowBackup="true"
         android:label="My Offline Karaoke"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false">
         <service android:name=".FloatingKaraokeService" android:exported="false" />
+        <service android:name=".MidiPlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

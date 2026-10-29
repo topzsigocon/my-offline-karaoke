@@ -28,6 +28,8 @@ public class FloatingKaraokeService extends Service {
     public static final String CMD_ADD = "add";
     public static final String CMD_PLAY = "play";
     public static final String CMD_NEXT = "next";
+    public static final String CMD_PAUSE = "pause";
+    public static final String CMD_STOP = "stop";
 
     private WindowManager wm;
     private WindowManager.LayoutParams bubbleParams, panelParams;
@@ -86,10 +88,12 @@ public class FloatingKaraokeService extends Service {
         LinearLayout r1=new LinearLayout(this); r1.setOrientation(LinearLayout.HORIZONTAL);
         Button add=button("Add sa Queue"); Button play=button("Play Now"); r1.addView(add,new LinearLayout.LayoutParams(0,dp(46),1)); r1.addView(play,new LinearLayout.LayoutParams(0,dp(46),1)); box.addView(r1);
         LinearLayout r2=new LinearLayout(this); r2.setOrientation(LinearLayout.HORIZONTAL);
-        Button next=button("Next ⏭"); Button close=button("Minimize"); r2.addView(next,new LinearLayout.LayoutParams(0,dp(44),1)); r2.addView(close,new LinearLayout.LayoutParams(0,dp(44),1)); box.addView(r2);
+        Button next=button("Next ⏭"); Button pause=button("Pause/Resume"); r2.addView(next,new LinearLayout.LayoutParams(0,dp(44),1)); r2.addView(pause,new LinearLayout.LayoutParams(0,dp(44),1)); box.addView(r2);
+        LinearLayout r3=new LinearLayout(this); r3.setOrientation(LinearLayout.HORIZONTAL);
+        Button stop=button("Stop ⏹"); Button close=button("Minimize"); r3.addView(stop,new LinearLayout.LayoutParams(0,dp(44),1)); r3.addView(close,new LinearLayout.LayoutParams(0,dp(44),1)); box.addView(r3);
         add.setOnClickListener(v -> send(CMD_ADD, number.getText().toString().trim()));
         play.setOnClickListener(v -> send(CMD_PLAY, number.getText().toString().trim()));
-        next.setOnClickListener(v -> send(CMD_NEXT, "")); close.setOnClickListener(v -> hidePanel());
+        next.setOnClickListener(v -> send(CMD_NEXT, "")); pause.setOnClickListener(v -> send(CMD_PAUSE, "")); stop.setOnClickListener(v -> send(CMD_STOP, "")); close.setOnClickListener(v -> hidePanel());
         panel=box;
         panelParams=new WindowManager.LayoutParams(dp(280),WindowManager.LayoutParams.WRAP_CONTENT,windowType(),
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,

@@ -32,3 +32,14 @@ This build adds a **Lyrics Check** button to inspect embedded lyric/text meta-ev
 Adds a SoundFont Settings screen where users can select an `.sf2` or `.sf3` file using Android's document picker (including SD card providers), persist the selected file URI, and restore the default selection.
 
 **Important:** This is only the settings/file-selection foundation. The current app still does NOT synthesize or play MIDI audio, and selecting a SoundFont does not yet change audio. A compatible FluidSynth/native integration and an appropriately licensed bundled SoundFont must be added and tested in a later stage before MIDI playback works.
+
+## Stage 2 MIDI playback (beta)
+
+This build adds a foreground MIDI playback service using the Android MIDI Driver / Sonivox EAS General MIDI synthesizer. It parses Standard MIDI Files (type 0/1) and schedules channel events, and exposes Play Now, queue-next, Pause/Resume and Stop through the floating controller. Playback is designed to continue when the Activity is backgrounded.
+
+Build dependency: `io.github.nikita36078:mididriver:v1.30` from Maven Central (Apache-2.0). GitHub Actions must have network access on the first build to download the dependency.
+
+Limitations of this beta:
+- The current synthesizer uses its built-in General MIDI soundbank. The existing `.sf2` picker still remembers a selection but custom SF2 loading is **not connected** to this Sonivox-based engine.
+- Karaoke lyric synchronization, video playback, and a dedicated playback progress/seek UI are not part of this stage.
+- Test with a small `.mid`/`.kar` first and inspect the GitHub Actions build log before installing.

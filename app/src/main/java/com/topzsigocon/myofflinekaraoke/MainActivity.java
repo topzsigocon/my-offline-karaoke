@@ -70,6 +70,7 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         songDb = new SongDb(this);
         buildUi();
+        loadSoundFontSetting();
         registerFloatingRemoteReceiver();
         loadCachedSongs();
         String savedFolder = getSharedPreferences(PREFS, MODE_PRIVATE)
@@ -276,13 +277,26 @@ public class MainActivity extends Activity {
             @Override public void onReceive(Context context, Intent intent) {
                 String command = intent.getStringExtra(FloatingKaraokeService.EXTRA_COMMAND);
                 String number = intent.getStringExtra(FloatingKaraokeService.EXTRA_NUMBER);
+                if (MidiPlaybackService.ACTION_FINISHED.equals(intent.getAction())) {
+                    String message = intent.getStringExtra("message");
+                    if (message != null && message.startsWith("Hindi mapatugtog:")) {
+                        Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    if (message != null && message.startsWith("Tapos:")) playNextQueued();
+                    return;
+                }
                 if (FloatingKaraokeService.CMD_NEXT.equals(command)) { playNextQueued(); return; }
+                if (FloatingKaraokeService.CMD_PAUSE.equals(command)) { sendMidiService(MidiPlaybackService.ACTION_PAUSE_TOGGLE, null, null); return; }
+                if (FloatingKaraokeService.CMD_STOP.equals(command)) { sendMidiService(MidiPlaybackService.ACTION_STOP, null, null); nowPlayingText.setText("NOW PLAYING\nNakahinto"); return; }
                 if (numberInput != null) numberInput.setText(number == null ? "" : number);
                 if (FloatingKaraokeService.CMD_ADD.equals(command)) findByNumber(true, false);
                 else if (FloatingKaraokeService.CMD_PLAY.equals(command)) findByNumber(false, true);
             }
         };
-        registerReceiver(floatingRemoteReceiver, new IntentFilter(FloatingKaraokeService.ACTION_REMOTE));
+        IntentFilter filter = new IntentFilter(FloatingKaraokeService.ACTION_REMOTE);
+        filter.addAction(MidiPlaybackService.ACTION_FINISHED);
+        registerReceiver(floatingRemoteReceiver, filter);
     }
 
     private void loadSoundFontSetting() {
@@ -297,17 +311,17 @@ public class MainActivity extends Activity {
         if (soundFontText == null) return;
         if (customSoundFontUri != null) {
             String name = queryDisplayName(customSoundFontUri);
-            soundFontText.setText("SoundFont: Custom • " + name + "\\nSaved for future playback integration");
+            soundFontText.setText("SoundFont file saved: " + name + "\nCustom SF2 loading is not connected yet; playback uses the built-in soundbank.");
         } else {
-            soundFontText.setText("SoundFont: Built-in default (synthesizer not yet connected)");
+            soundFontText.setText("SoundFont: Built-in General MIDI soundbank");
         }
     }
 
     private void showSoundFontSettings() {
         String current = customSoundFontUri == null
-                ? "Kasalukuyan: Built-in default\\n(Paalaala: hindi pa nakakabit ang audio synthesizer.)"
-                : "Kasalukuyan: " + queryDisplayName(customSoundFontUri)
-                  + "\\n(Paalaala: naka-save ang napiling file; hindi pa ito ginagamit sa pagtugtog.)";
+                ? "Kasalukuyan: Built-in General MIDI soundbank."
+                : "Naka-save na file: " + queryDisplayName(customSoundFontUri)
+                  + "\nPaalaala: ang kasalukuyang playback engine ay hindi pa sumusuporta sa custom SF2 loading; built-in soundbank muna ang gagamitin.";
         String[] options = {"Pumili ng .SF2 mula sa phone/SD card", "Gamitin ang built-in default", "Kanselahin"};
         new AlertDialog.Builder(this)
             .setTitle("SoundFont Settings")
@@ -356,7 +370,7 @@ public class MainActivity extends Activity {
             updateSoundFontLabel();
             new AlertDialog.Builder(this)
                 .setTitle("SoundFont saved")
-                .setMessage("Napili: " + name + "\\nNai-save ang pagpili para sa susunod na pagbukas ng app. Hindi pa ginagamit ang SoundFont sa playback sa build na ito.")
+                .setMessage("Napili at nai-save: " + name + "\\nPaalaala: built-in soundbank pa rin ang gagamitin sa Stage 2 beta. Hindi pa nakakabit ang custom SF2 loading.")
                 .setPositiveButton("OK", null).show();
         }
 
@@ -729,9 +743,7 @@ public class MainActivity extends Activity {
             return;
         }
         if (playNow) {
-            nowPlayingText.setText("SELECTED SONG\n" + s.number + " — " + s.title
-                    + "\n\nMIDI playback engine ay hindi pa kasama sa prototype.");
-            Toast.makeText(this, "Napili ang kanta. Idadagdag ang MIDI engine sa susunod na build.", Toast.LENGTH_LONG).show();
+            playSong(s);
         } else if (addToQueue) {
             queue.add(s);
             updateQueueText();
@@ -749,9 +761,27 @@ public class MainActivity extends Activity {
         currentQueueIndex++;
         if (currentQueueIndex >= queue.size()) currentQueueIndex = 0;
         Song s = queue.get(currentQueueIndex);
-        nowPlayingText.setText("SELECTED FROM QUEUE\n" + s.number + " — " + s.title
-                + "\n\nMIDI playback engine ay hindi pa kasama sa prototype.");
+        playSong(s);
         updateQueueText();
+    }
+
+    private void playSong(Song song) {
+        nowPlayingText.setText("NOW PLAYING\n" + song.number + " — " + song.title + "\nBuilt-in MIDI soundbank");
+        sendMidiService(MidiPlaybackService.ACTION_PLAY, song.uri, song.title + " — " + song.number);
+        Toast.makeText(this, "Sinimulan ang MIDI: " + song.title, Toast.LENGTH_SHORT).show();
+    }
+
+    private void sendMidiService(String action, Uri uri, String title) {
+        Intent intent = new Intent(this, MidiPlaybackService.class);
+        intent.setAction(action);
+        if (uri != null) intent.setData(uri);
+        if (title != null) intent.putExtra(MidiPlaybackService.EXTRA_TITLE, title);
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 26 && MidiPlaybackService.ACTION_PLAY.equals(action)) startForegroundService(intent);
+            else startService(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "Hindi masimulan ang MIDI playback service: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     private void updateQueueText() {

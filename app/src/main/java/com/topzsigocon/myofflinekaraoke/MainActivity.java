@@ -284,9 +284,20 @@ public class MainActivity extends Activity {
                 String number = intent.getStringExtra(FloatingKaraokeService.EXTRA_NUMBER);
                 if (MidiPlaybackService.ACTION_LYRIC.equals(intent.getAction())) {
                     String lyric = intent.getStringExtra("lyric");
+                    String line = intent.getStringExtra("line");
+                    int start = intent.getIntExtra("highlightStart", -1);
+                    int end = intent.getIntExtra("highlightEnd", -1);
                     if (liveLyricsText != null && lyric != null) {
-                        if ("\r".equals(lyric) || "\n".equals(lyric)) liveLyricsText.setText("♫");
-                        else liveLyricsText.setText(lyric);
+                        if (line == null || line.trim().isEmpty()) {
+                            liveLyricsText.setText("♫");
+                        } else {
+                            android.text.SpannableString styled = new android.text.SpannableString(line);
+                            if (start >= 0 && end > start && end <= styled.length()) {
+                                styled.setSpan(new android.text.style.ForegroundColorSpan(Color.rgb(255, 220, 80)), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                                styled.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                            }
+                            liveLyricsText.setText(styled);
+                        }
                     }
                     return;
                 }

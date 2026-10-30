@@ -16,6 +16,9 @@ final class MidiFileParser {
         final int tempo;
         final String lyric;
         long micros;
+        String lyricLine;
+        int lyricStart = -1;
+        int lyricEnd = -1;
         Event(long tick, byte[] message, int tempo) { this(tick, message, tempo, null); }
         Event(long tick, byte[] message, int tempo, String lyric) { this.tick=tick; this.message=message; this.tempo=tempo; this.lyric=lyric; }
     }
@@ -48,7 +51,52 @@ final class MidiFileParser {
             e.micros=elapsed; prevTick=e.tick;
             if (e.tempo > 0) tempo=e.tempo;
         }
+        annotateLyricLines(all);
         return all;
+    }
+
+    /** Groups word/fragment lyric meta-events into complete display lines. */
+    private static void annotateLyricLines(List<Event> events) {
+        List<Event> pending = new ArrayList<>();
+        for (Event event : events) {
+            if (event.lyric == null) continue;
+            if (isLineBreak(event.lyric)) {
+                assignLine(pending);
+                pending.clear();
+            } else {
+                pending.add(event);
+            }
+        }
+        assignLine(pending);
+    }
+
+    private static boolean isLineBreak(String value) {
+        return value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0;
+    }
+
+    private static void assignLine(List<Event> words) {
+        if (words.isEmpty()) return;
+        StringBuilder line = new StringBuilder();
+        int[] starts = new int[words.size()];
+        int[] ends = new int[words.size()];
+        for (int i = 0; i < words.size(); i++) {
+            String part = words.get(i).lyric;
+            starts[i] = line.length();
+            line.append(part);
+            ends[i] = line.length();
+        }
+        String full = line.toString();
+        int left = 0, right = full.length();
+        while (left < right && Character.isWhitespace(full.charAt(left))) left++;
+        while (right > left && Character.isWhitespace(full.charAt(right - 1))) right--;
+        full = full.substring(left, right);
+        if (full.isEmpty()) return;
+        for (int i = 0; i < words.size(); i++) {
+            Event word = words.get(i);
+            word.lyricLine = full;
+            word.lyricStart = Math.max(0, Math.min(full.length(), starts[i] - left));
+            word.lyricEnd = Math.max(word.lyricStart, Math.min(full.length(), ends[i] - left));
+        }
     }
 
     private static void parseTrack(byte[] bytes, List<Event> out) throws IOException {
@@ -68,9 +116,12 @@ final class MidiFileParser {
                 } else if (type == 0x05 && n > 0) {
                     byte[] lyricBytes = new byte[n]; in.readFully(lyricBytes);
                     String rawLyric = new String(lyricBytes, java.nio.charset.StandardCharsets.UTF_8).replace("\u0000", "");
-                    String lyric = rawLyric.trim();
-                    if (!lyric.isEmpty()) out.add(new Event(tick, null, 0, lyric));
-                    else if (rawLyric.indexOf(13) >= 0 || rawLyric.indexOf(10) >= 0) out.add(new Event(tick, null, 0, "\r"));
+                    if (rawLyric.indexOf(13) >= 0 || rawLyric.indexOf(10) >= 0) {
+                        out.add(new Event(tick, null, 0, "\r"));
+                    } else if (!rawLyric.trim().isEmpty()) {
+                        // Keep spaces: MIDI lyric tracks often store one syllable/word per event.
+                        out.add(new Event(tick, null, 0, rawLyric));
+                    }
                 } else in.skipBytes(n);
                 running=0;
             } else if (status == 0xf0 || status == 0xf7) {

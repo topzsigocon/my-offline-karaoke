@@ -82,6 +82,9 @@ public class MidiPlaybackService extends Service {
                         Intent lyricIntent = new Intent(ACTION_LYRIC);
                         lyricIntent.setPackage(getPackageName());
                         lyricIntent.putExtra("lyric", event.lyric);
+                        lyricIntent.putExtra("line", event.lyricLine == null ? event.lyric : event.lyricLine);
+                        lyricIntent.putExtra("highlightStart", event.lyricStart);
+                        lyricIntent.putExtra("highlightEnd", event.lyricEnd);
                         sendBroadcast(lyricIntent);
                     }
                 }

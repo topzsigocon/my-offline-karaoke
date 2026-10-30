@@ -268,6 +268,16 @@ public class MainActivity extends Activity {
         startActivityForResult(intent, PICK_BACKGROUND_VIDEO);
     }
 
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PICK_BACKGROUND_VIDEO && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            backgroundVideoUri = data.getData();
+            try { getContentResolver().takePersistableUriPermission(backgroundVideoUri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_VIDEO_URI, backgroundVideoUri.toString()).apply();
+            Toast.makeText(this, "Nai-save ang shared background video.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private void enterKaraokeMode() {
         if (karaokeFrame == null) buildKaraokeMode();
         karaokeMode = true;
@@ -479,13 +489,6 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == PICK_BACKGROUND_VIDEO && resultCode == RESULT_OK && data != null && data.getData() != null) {
-            backgroundVideoUri = data.getData();
-            try { getContentResolver().takePersistableUriPermission(backgroundVideoUri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_VIDEO_URI, backgroundVideoUri.toString()).apply();
-            Toast.makeText(this, "Nai-save ang shared background video.", Toast.LENGTH_SHORT).show();
-            return;
-        }
         if (requestCode == PICK_SOUNDFONT && resultCode == RESULT_OK && data != null && data.getData() != null) {
             Uri uri = data.getData();
             String name = queryDisplayName(uri);

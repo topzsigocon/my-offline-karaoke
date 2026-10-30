@@ -25,6 +25,7 @@ public class MidiPlaybackService extends Service {
     public static final String ACTION_PAUSE_TOGGLE = "com.topzsigocon.myofflinekaraoke.MIDI_PAUSE_TOGGLE";
     public static final String ACTION_STOP = "com.topzsigocon.myofflinekaraoke.MIDI_STOP";
     public static final String ACTION_FINISHED = "com.topzsigocon.myofflinekaraoke.MIDI_FINISHED";
+    public static final String ACTION_LYRIC = "com.topzsigocon.myofflinekaraoke.MIDI_LYRIC";
     public static final String EXTRA_URI = "midi_uri";
     public static final String EXTRA_TITLE = "midi_title";
     private static final String CHANNEL = "karaoke_playback";
@@ -77,6 +78,12 @@ public class MidiPlaybackService extends Service {
                     if (!waitDelay(delay)) break;
                     previousMicros=event.micros;
                     if (event.message != null && !stopRequested) driver.queueEvent(event.message);
+                    if (event.lyric != null && !stopRequested) {
+                        Intent lyricIntent = new Intent(ACTION_LYRIC);
+                        lyricIntent.setPackage(getPackageName());
+                        lyricIntent.putExtra("lyric", event.lyric);
+                        sendBroadcast(lyricIntent);
+                    }
                 }
                 allNotesOff();
                 if (!stopRequested) {

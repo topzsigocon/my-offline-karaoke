@@ -46,7 +46,7 @@ public class MainActivity extends Activity {
     private static final String PREF_FOLDER_URI = "song_folder_uri";
     private LinearLayout root, songList;
     private EditText numberInput, searchInput;
-    private TextView statusText, nowPlayingText, queueText, soundFontText;
+    private TextView statusText, nowPlayingText, queueText, soundFontText, liveLyricsText;
     private Uri customSoundFontUri;
     private Uri selectedTree;
     private final List<Song> songs = new ArrayList<>();
@@ -163,6 +163,10 @@ public class MainActivity extends Activity {
         nowCard.setBackground(bg(Color.rgb(28, 38, 61), 14));
         nowPlayingText = label("NOW PLAYING\nWala pang napipiling kanta", 15, Color.WHITE, true);
         nowCard.addView(nowPlayingText);
+        liveLyricsText = label("♫  Hihintayin ang lyrics…", 18, Color.rgb(255, 220, 120), true);
+        liveLyricsText.setGravity(Gravity.CENTER);
+        liveLyricsText.setPadding(0, dp(12), 0, dp(12));
+        nowCard.addView(liveLyricsText);
         queueText = label("Queue: 0 kanta", 12, Color.rgb(180,200,230), false);
         nowCard.addView(queueText);
         root.addView(nowCard, new LinearLayout.LayoutParams(-1, -2));
@@ -278,6 +282,14 @@ public class MainActivity extends Activity {
             @Override public void onReceive(Context context, Intent intent) {
                 String command = intent.getStringExtra(FloatingKaraokeService.EXTRA_COMMAND);
                 String number = intent.getStringExtra(FloatingKaraokeService.EXTRA_NUMBER);
+                if (MidiPlaybackService.ACTION_LYRIC.equals(intent.getAction())) {
+                    String lyric = intent.getStringExtra("lyric");
+                    if (liveLyricsText != null && lyric != null) {
+                        if ("\r".equals(lyric) || "\n".equals(lyric)) liveLyricsText.setText("♫");
+                        else liveLyricsText.setText(lyric);
+                    }
+                    return;
+                }
                 if (MidiPlaybackService.ACTION_FINISHED.equals(intent.getAction())) {
                     String message = intent.getStringExtra("message");
                     if (message != null && message.startsWith("Hindi mapatugtog:")) {
@@ -297,6 +309,7 @@ public class MainActivity extends Activity {
         };
         IntentFilter filter = new IntentFilter(FloatingKaraokeService.ACTION_REMOTE);
         filter.addAction(MidiPlaybackService.ACTION_FINISHED);
+        filter.addAction(MidiPlaybackService.ACTION_LYRIC);
         registerReceiver(floatingRemoteReceiver, filter);
     }
 
@@ -768,6 +781,7 @@ public class MainActivity extends Activity {
 
     private void playSong(Song song) {
         nowPlayingText.setText("NOW PLAYING\n" + song.number + " — " + song.title + "\nBuilt-in MIDI soundbank");
+        if (liveLyricsText != null) liveLyricsText.setText("♫  Naghahanda ng lyrics…");
         sendMidiService(MidiPlaybackService.ACTION_PLAY, song.uri, song.title + " — " + song.number);
         Toast.makeText(this, "Sinimulan ang MIDI: " + song.title, Toast.LENGTH_SHORT).show();
     }

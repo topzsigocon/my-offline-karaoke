@@ -14,8 +14,10 @@ final class MidiFileParser {
         final long tick;
         final byte[] message;
         final int tempo;
+        final String lyric;
         long micros;
-        Event(long tick, byte[] message, int tempo) { this.tick=tick; this.message=message; this.tempo=tempo; }
+        Event(long tick, byte[] message, int tempo) { this(tick, message, tempo, null); }
+        Event(long tick, byte[] message, int tempo, String lyric) { this.tick=tick; this.message=message; this.tempo=tempo; this.lyric=lyric; }
     }
     static final class TrackData { final List<Event> events = new ArrayList<>(); }
     private MidiFileParser() {}
@@ -63,6 +65,12 @@ final class MidiFileParser {
                 if (type == 0x51 && n == 3) {
                     int tempo=(in.readUnsignedByte()<<16)|(in.readUnsignedByte()<<8)|in.readUnsignedByte();
                     out.add(new Event(tick,null,tempo));
+                } else if (type == 0x05 && n > 0) {
+                    byte[] lyricBytes = new byte[n]; in.readFully(lyricBytes);
+                    String rawLyric = new String(lyricBytes, java.nio.charset.StandardCharsets.UTF_8).replace("\u0000", "");
+                    String lyric = rawLyric.trim();
+                    if (!lyric.isEmpty()) out.add(new Event(tick, null, 0, lyric));
+                    else if (rawLyric.indexOf(13) >= 0 || rawLyric.indexOf(10) >= 0) out.add(new Event(tick, null, 0, "\r"));
                 } else in.skipBytes(n);
                 running=0;
             } else if (status == 0xf0 || status == 0xf7) {

@@ -139,124 +139,179 @@ public class MainActivity extends Activity {
         return b;
     }
 
+    private LinearLayout tabBar;
+    private LinearLayout libraryPage, nowPlayingPage, settingsPage;
+    private TextView tabLibrary, tabNow, tabKaraoke, tabSettings;
+    private int activeTab = 0;
+
     private void buildUi() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(18), dp(16), dp(12));
-        root.setBackgroundColor(Color.rgb(13, 18, 32));
+        root.setPadding(dp(12), dp(10), dp(12), dp(8));
+        root.setBackgroundColor(Color.rgb(8, 15, 30));
 
-        TextView title = label("MY OFFLINE KARAOKE", 22, Color.WHITE, true);
-        title.setGravity(Gravity.CENTER);
+        TextView title = label("🎤  MY OFFLINE KARAOKE", 20, Color.rgb(255, 205, 75), true);
+        title.setGravity(Gravity.CENTER_VERTICAL);
         root.addView(title, new LinearLayout.LayoutParams(-1, dp(42)));
 
-        TextView subtitle = label("MIDI / KAR • SONG NUMBER • OFFLINE LIBRARY", 11, Color.rgb(160,180,210), false);
-        subtitle.setGravity(Gravity.CENTER);
-        root.addView(subtitle, new LinearLayout.LayoutParams(-1, dp(28)));
+        tabBar = new LinearLayout(this);
+        tabBar.setOrientation(LinearLayout.HORIZONTAL);
+        tabBar.setPadding(dp(3), dp(3), dp(3), dp(3));
+        tabBar.setBackground(bg(Color.rgb(20, 33, 58), 14));
+        tabLibrary = tabButton("♫\nLibrary");
+        tabNow = tabButton("▶\nNow Playing");
+        tabKaraoke = tabButton("🎤\nKaraoke");
+        tabSettings = tabButton("⚙\nSettings");
+        tabBar.addView(tabLibrary, new LinearLayout.LayoutParams(0, dp(54), 1));
+        tabBar.addView(tabNow, new LinearLayout.LayoutParams(0, dp(54), 1));
+        tabBar.addView(tabKaraoke, new LinearLayout.LayoutParams(0, dp(54), 1));
+        tabBar.addView(tabSettings, new LinearLayout.LayoutParams(0, dp(54), 1));
+        root.addView(tabBar);
 
+        FrameLayout pages = new FrameLayout(this);
+        root.addView(pages, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        libraryPage = new LinearLayout(this);
+        libraryPage.setOrientation(LinearLayout.VERTICAL);
+        libraryPage.setPadding(dp(2), dp(10), dp(2), dp(4));
+        TextView libraryTitle = label("SONGBOOK / LIBRARY", 18, Color.WHITE, true);
+        libraryPage.addView(libraryTitle, new LinearLayout.LayoutParams(-1, dp(34)));
         searchInput = new EditText(this);
         searchInput.setSingleLine(true);
-        searchInput.setHint("Search title o filename");
+        searchInput.setHint("Search title, artist o filename...");
         searchInput.setHintTextColor(Color.GRAY);
         searchInput.setTextColor(Color.WHITE);
         searchInput.setPadding(dp(12), 0, dp(12), 0);
-        searchInput.setBackground(bg(Color.rgb(36, 47, 70), 10));
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, dp(48));
-        sp.topMargin = dp(8);
-        root.addView(searchInput, sp);
+        searchInput.setBackground(bg(Color.rgb(29, 43, 69), 12));
+        libraryPage.addView(searchInput, new LinearLayout.LayoutParams(-1, dp(46)));
         searchInput.addTextChangedListener(new android.text.TextWatcher() {
             public void beforeTextChanged(CharSequence s,int st,int c,int a){}
             public void onTextChanged(CharSequence s,int start,int before,int count){ renderSongs(); }
             public void afterTextChanged(android.text.Editable e){}
         });
+        statusText = label("Pumili ng folder para i-scan ang MIDI/KAR files.", 12, Color.rgb(170,190,220), false);
+        LinearLayout.LayoutParams stp = new LinearLayout.LayoutParams(-1, -2); stp.topMargin = dp(6);
+        libraryPage.addView(statusText, stp);
+        ScrollView scroll = new ScrollView(this);
+        songList = new LinearLayout(this); songList.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(songList);
+        libraryPage.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        pages.addView(libraryPage, new FrameLayout.LayoutParams(-1, -1));
 
-        LinearLayout nowCard = new LinearLayout(this);
-        nowCard.setOrientation(LinearLayout.VERTICAL);
-        nowCard.setPadding(dp(12), dp(10), dp(12), dp(10));
-        nowCard.setBackground(bg(Color.rgb(28, 38, 61), 14));
-        nowPlayingText = label("NOW PLAYING\nWala pang napipiling kanta", 15, Color.WHITE, true);
-        nowCard.addView(nowPlayingText);
-        liveLyricsText = label("♫  Hihintayin ang lyrics…", 18, Color.rgb(255, 220, 120), true);
+        nowPlayingPage = new LinearLayout(this);
+        nowPlayingPage.setOrientation(LinearLayout.VERTICAL);
+        nowPlayingPage.setPadding(dp(4), dp(12), dp(4), dp(8));
+        TextView npTitle = label("NOW PLAYING", 19, Color.rgb(255,205,75), true);
+        nowPlayingPage.addView(npTitle, new LinearLayout.LayoutParams(-1, dp(34)));
+        nowPlayingText = label("Wala pang napipiling kanta", 17, Color.WHITE, true);
+        nowPlayingText.setPadding(dp(12), dp(14), dp(12), dp(14));
+        nowPlayingText.setBackground(bg(Color.rgb(24, 39, 66), 14));
+        nowPlayingPage.addView(nowPlayingText, new LinearLayout.LayoutParams(-1, -2));
+        liveLyricsText = label("♫  Hihintayin ang lyrics…", 17, Color.rgb(255, 210, 90), true);
         liveLyricsText.setGravity(Gravity.CENTER);
-        liveLyricsText.setPadding(0, dp(12), 0, dp(12));
-        nowCard.addView(liveLyricsText);
-        queueText = label("Queue: 0 kanta", 12, Color.rgb(180,200,230), false);
-        nowCard.addView(queueText);
-        root.addView(nowCard, new LinearLayout.LayoutParams(-1, -2));
+        liveLyricsText.setPadding(dp(8), dp(12), dp(8), dp(12));
+        nowPlayingPage.addView(liveLyricsText, new LinearLayout.LayoutParams(-1, -2));
+        queueText = label("Queue: 0 kanta", 14, Color.rgb(190,210,235), true);
+        queueText.setPadding(dp(8), dp(8), dp(8), dp(8));
+        nowPlayingPage.addView(queueText, new LinearLayout.LayoutParams(-1, -2));
+        Button queueButton = button("☷  Tingnan ang Queue");
+        nowPlayingPage.addView(queueButton, new LinearLayout.LayoutParams(-1, dp(44)));
+        queueButton.setOnClickListener(v -> showKaraokeQueue());
 
         numberInput = new EditText(this);
         numberInput.setSingleLine(true);
-        numberInput.setHint("Ilagay ang song number, hal. 0125");
+        numberInput.setHint("Ilagay ang song number");
         numberInput.setHintTextColor(Color.GRAY);
         numberInput.setTextColor(Color.WHITE);
         numberInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         numberInput.setPadding(dp(12), 0, dp(12), 0);
-        numberInput.setBackground(bg(Color.rgb(36, 47, 70), 10));
-        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1, dp(52));
-        np.topMargin = dp(12);
-        root.addView(numberInput, np);
-
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        Button find = button("Hanapin");
-        Button add = button("Add sa Queue");
-        Button play = button("Play Now");
-        row.addView(find, new LinearLayout.LayoutParams(0, dp(48), 1));
-        row.addView(add, new LinearLayout.LayoutParams(0, dp(48), 1));
-        row.addView(play, new LinearLayout.LayoutParams(0, dp(48), 1));
-        root.addView(row);
-        find.setOnClickListener(v -> findByNumber(false, false));
+        numberInput.setBackground(bg(Color.rgb(29,43,69), 12));
+        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1, dp(50)); np.topMargin = dp(8);
+        nowPlayingPage.addView(numberInput, np);
+        LinearLayout numberActions = new LinearLayout(this);
+        Button add = button("+ Queue"); Button play = button("▶ Play Now");
+        numberActions.addView(add, new LinearLayout.LayoutParams(0, dp(46), 1));
+        numberActions.addView(play, new LinearLayout.LayoutParams(0, dp(46), 1));
+        nowPlayingPage.addView(numberActions);
         add.setOnClickListener(v -> findByNumber(true, false));
         play.setOnClickListener(v -> findByNumber(false, true));
 
-        LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        Button folder = button("Piliin ang SD Card Folder");
-        Button next = button("Next");
-        actions.addView(folder, new LinearLayout.LayoutParams(0, dp(48), 2));
-        actions.addView(next, new LinearLayout.LayoutParams(0, dp(48), 1));
-        root.addView(actions);
-        Button floating = button("🎤 Enable Floating Karaoke Controller");
-        root.addView(floating, new LinearLayout.LayoutParams(-1, dp(48)));
-        floating.setOnClickListener(v -> enableFloatingController());
-
-        Button lyricsCheck = button("Lyrics Check");
-        root.addView(lyricsCheck, new LinearLayout.LayoutParams(-1, dp(44)));
-        lyricsCheck.setOnClickListener(v -> showLyricsForSelectedSong());
-
-        Button soundFontSettings = button("SoundFont Settings");
-        root.addView(soundFontSettings, new LinearLayout.LayoutParams(-1, dp(44)));
-        soundFontText = label("SoundFont: Built-in default (synthesizer not yet connected)", 12, Color.rgb(170,190,220), false);
-        root.addView(soundFontText, new LinearLayout.LayoutParams(-1, -2));
-        soundFontSettings.setOnClickListener(v -> showSoundFontSettings());
-        folder.setOnClickListener(v -> chooseFolder());
+        LinearLayout controls = new LinearLayout(this); controls.setOrientation(LinearLayout.HORIZONTAL);
+        Button search = button("⌕ Search"); Button pause = button("Ⅱ Pause"); Button next = button("▶| Next"); Button stop = button("■ Stop");
+        controls.addView(search, new LinearLayout.LayoutParams(0, dp(48), 1));
+        controls.addView(pause, new LinearLayout.LayoutParams(0, dp(48), 1));
+        controls.addView(next, new LinearLayout.LayoutParams(0, dp(48), 1));
+        controls.addView(stop, new LinearLayout.LayoutParams(0, dp(48), 1));
+        nowPlayingPage.addView(controls);
+        search.setOnClickListener(v -> { showTab(0); searchInput.requestFocus(); ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(searchInput, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT); });
+        pause.setOnClickListener(v -> sendMidiService(MidiPlaybackService.ACTION_PAUSE_TOGGLE, null, null));
         next.setOnClickListener(v -> playNextQueued());
-
-        statusText = label("Pumili ng folder para i-scan ang MIDI/KAR files.", 12, Color.rgb(170,190,220), false);
-        LinearLayout.LayoutParams stp = new LinearLayout.LayoutParams(-1, -2);
-        stp.topMargin = dp(8);
-        root.addView(statusText, stp);
-
-        TextView listTitle = label("SONGBOOK", 16, Color.WHITE, true);
-        LinearLayout.LayoutParams ltp = new LinearLayout.LayoutParams(-1, dp(32));
-        ltp.topMargin = dp(6);
-        root.addView(listTitle, ltp);
-
-        ScrollView scroll = new ScrollView(this);
-        songList = new LinearLayout(this);
-        songList.setOrientation(LinearLayout.VERTICAL);
-        scroll.addView(songList);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-
-        Button chooseVideo = button("Pumili ng Background Video");
-        root.addView(chooseVideo, new LinearLayout.LayoutParams(-1, dp(44)));
-        chooseVideo.setOnClickListener(v -> chooseBackgroundVideo());
-        Button enterKaraoke = button("🎤 Enter Karaoke Mode");
-        root.addView(enterKaraoke, new LinearLayout.LayoutParams(-1, dp(48)));
+        stop.setOnClickListener(v -> { sendMidiService(MidiPlaybackService.ACTION_STOP, null, null); nowPlayingText.setText("Nakahinto"); });
+        Button enterKaraoke = button("⛶  Buksan ang Karaoke Mode");
+        nowPlayingPage.addView(enterKaraoke, new LinearLayout.LayoutParams(-1, dp(50)));
         enterKaraoke.setOnClickListener(v -> enterKaraokeMode());
+        Button floating = button("🎤  Enable Floating Controller");
+        nowPlayingPage.addView(floating, new LinearLayout.LayoutParams(-1, dp(46)));
+        floating.setOnClickListener(v -> enableFloatingController());
+        pages.addView(nowPlayingPage, new FrameLayout.LayoutParams(-1, -1));
+
+        settingsPage = new LinearLayout(this);
+        settingsPage.setOrientation(LinearLayout.VERTICAL);
+        settingsPage.setPadding(dp(4), dp(12), dp(4), dp(8));
+        TextView settingsTitle = label("SETTINGS", 19, Color.rgb(255,205,75), true);
+        settingsPage.addView(settingsTitle, new LinearLayout.LayoutParams(-1, dp(38)));
+        Button folder = button("📁  Piliin / I-refresh ang Music Folder");
+        settingsPage.addView(folder, new LinearLayout.LayoutParams(-1, dp(50)));
+        folder.setOnClickListener(v -> chooseFolder());
+        Button chooseVideo = button("🎞  Pumili ng Shared Background Video");
+        settingsPage.addView(chooseVideo, new LinearLayout.LayoutParams(-1, dp(50)));
+        chooseVideo.setOnClickListener(v -> chooseBackgroundVideo());
+        Button soundFontSettings = button("♫  SoundFont Settings");
+        settingsPage.addView(soundFontSettings, new LinearLayout.LayoutParams(-1, dp(50)));
+        soundFontSettings.setOnClickListener(v -> showSoundFontSettings());
+        soundFontText = label("SoundFont: Built-in default (custom playback support depends on synthesizer)", 12, Color.rgb(170,190,220), false);
+        settingsPage.addView(soundFontText, new LinearLayout.LayoutParams(-1, -2));
+        Button lyricsCheck = button("Lyrics Check");
+        settingsPage.addView(lyricsCheck, new LinearLayout.LayoutParams(-1, dp(46)));
+        lyricsCheck.setOnClickListener(v -> showLyricsForSelectedSong());
+        TextView appearance = label("UI / APPEARANCE", 15, Color.WHITE, true);
+        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-1, dp(38)); ap.topMargin = dp(12);
+        settingsPage.addView(appearance, ap);
+        Button karaokeToggle = button("⛶  Preview Karaoke Mode");
+        settingsPage.addView(karaokeToggle, new LinearLayout.LayoutParams(-1, dp(46)));
+        karaokeToggle.setOnClickListener(v -> enterKaraokeMode());
+        TextView note = label("Tip: Pumili ng video nang isang beses; iyon ang gagamiting background sa lahat ng kanta. Maaari itong i-crop sa portrait screen.", 12, Color.rgb(170,190,220), false);
+        note.setPadding(dp(4), dp(12), dp(4), dp(4));
+        settingsPage.addView(note);
+        pages.addView(settingsPage, new FrameLayout.LayoutParams(-1, -1));
+
+        tabLibrary.setOnClickListener(v -> showTab(0));
+        tabNow.setOnClickListener(v -> showTab(1));
+        tabKaraoke.setOnClickListener(v -> enterKaraokeMode());
+        tabSettings.setOnClickListener(v -> showTab(3));
         normalRoot = root;
+        showTab(0);
         setContentView(root);
     }
 
+    private TextView tabButton(String text) {
+        TextView v = label(text, 12, Color.rgb(190,205,225), true);
+        v.setGravity(Gravity.CENTER);
+        v.setBackground(bg(Color.TRANSPARENT, 10));
+        return v;
+    }
+
+    private void showTab(int tab) {
+        activeTab = tab;
+        libraryPage.setVisibility(tab == 0 ? View.VISIBLE : View.GONE);
+        nowPlayingPage.setVisibility(tab == 1 ? View.VISIBLE : View.GONE);
+        settingsPage.setVisibility(tab == 3 ? View.VISIBLE : View.GONE);
+        TextView[] tabs = {tabLibrary, tabNow, tabKaraoke, tabSettings};
+        for (int i = 0; i < tabs.length; i++) {
+            tabs[i].setTextColor(i == tab ? Color.rgb(20,30,48) : Color.rgb(190,205,225));
+            tabs[i].setBackground(bg(i == tab ? Color.rgb(255,204,74) : Color.TRANSPARENT, 10));
+        }
+    }
 
 
 
@@ -299,9 +354,10 @@ public class MainActivity extends Activity {
         lyricsColumn.setOrientation(LinearLayout.VERTICAL);
         lyricsColumn.setGravity(Gravity.CENTER);
         lyricsColumn.setPadding(dp(18), dp(18), dp(18), dp(18));
-        FrameLayout.LayoutParams lyricsParams = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+        FrameLayout.LayoutParams lyricsParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        lyricsParams.setMargins(dp(12), 0, dp(12), dp(82));
         karaokeFrame.addView(lyricsColumn, lyricsParams);
-        karaokeLyrics = label("♫  Hihintayin ang lyrics…", 28, Color.WHITE, true);
+        karaokeLyrics = label("Hihintayin ang lyrics…", 25, Color.rgb(255, 210, 75), true);
         karaokeLyrics.setGravity(Gravity.CENTER);
         karaokeLyrics.setShadowLayer(dp(4), 1, 2, Color.BLACK);
         lyricsColumn.addView(karaokeLyrics);
@@ -314,7 +370,7 @@ public class MainActivity extends Activity {
         karaokeFrame.addView(karaokeQueue, queueParams);
         karaokeQueue.setOnClickListener(v -> showKaraokeQueue());
 
-        Button showUi = button("◉ Show UI");
+        Button showUi = button("◉ Show UI / Tabs");
         FrameLayout.LayoutParams showParams = new FrameLayout.LayoutParams(-2, dp(48), Gravity.BOTTOM | Gravity.END);
         showParams.setMargins(0, 0, dp(18), dp(22));
         karaokeFrame.addView(showUi, showParams);

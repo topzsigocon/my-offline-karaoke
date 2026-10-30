@@ -21,6 +21,8 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.FrameLayout;
+import android.widget.VideoView;
 import android.widget.Toast;
 import android.app.AlertDialog;
 import android.provider.Settings;
@@ -57,6 +59,14 @@ public class MainActivity extends Activity {
     private static final int MAX_DEPTH = 30;
     private SongDb songDb;
     private BroadcastReceiver floatingRemoteReceiver;
+    private static final int PICK_BACKGROUND_VIDEO = 103;
+    private static final String PREF_VIDEO_URI = "karaoke_background_video_uri";
+    private Uri backgroundVideoUri;
+    private FrameLayout karaokeFrame;
+    private VideoView karaokeVideo;
+    private TextView karaokeLyrics, karaokeQueue;
+    private View normalRoot;
+    private boolean karaokeMode = false;
 
     static class Song {
         String number, title, artist, fileName;
@@ -72,6 +82,8 @@ public class MainActivity extends Activity {
         songDb = new SongDb(this);
         buildUi();
         loadSoundFontSetting();
+        String savedVideo = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_VIDEO_URI, null);
+        if (savedVideo != null) try { backgroundVideoUri = Uri.parse(savedVideo); } catch (Exception ignored) {}
         registerFloatingRemoteReceiver();
         loadCachedSongs();
         String savedFolder = getSharedPreferences(PREFS, MODE_PRIVATE)
@@ -235,11 +247,111 @@ public class MainActivity extends Activity {
         scroll.addView(songList);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
+        Button chooseVideo = button("Pumili ng Background Video");
+        root.addView(chooseVideo, new LinearLayout.LayoutParams(-1, dp(44)));
+        chooseVideo.setOnClickListener(v -> chooseBackgroundVideo());
+        Button enterKaraoke = button("🎤 Enter Karaoke Mode");
+        root.addView(enterKaraoke, new LinearLayout.LayoutParams(-1, dp(48)));
+        enterKaraoke.setOnClickListener(v -> enterKaraokeMode());
+        normalRoot = root;
         setContentView(root);
     }
 
 
 
+
+    private void chooseBackgroundVideo() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("video/*");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(intent, PICK_BACKGROUND_VIDEO);
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PICK_BACKGROUND_VIDEO && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            backgroundVideoUri = data.getData();
+            try { getContentResolver().takePersistableUriPermission(backgroundVideoUri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_VIDEO_URI, backgroundVideoUri.toString()).apply();
+            Toast.makeText(this, "Nai-save ang shared background video.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void enterKaraokeMode() {
+        if (karaokeFrame == null) buildKaraokeMode();
+        karaokeMode = true;
+        getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        setContentView(karaokeFrame);
+        if (backgroundVideoUri != null) {
+            try {
+                karaokeVideo.setVideoURI(backgroundVideoUri);
+                karaokeVideo.setOnPreparedListener(mp -> { mp.setLooping(true); karaokeVideo.start(); });
+            } catch (Exception e) { Toast.makeText(this, "Hindi mabuksan ang background video.", Toast.LENGTH_LONG).show(); }
+        }
+        karaokeQueue.setText("QUEUE: " + queue.size());
+        startFloatingControllerIfAllowed();
+    }
+
+    private void buildKaraokeMode() {
+        karaokeFrame = new FrameLayout(this);
+        karaokeFrame.setBackgroundColor(Color.BLACK);
+        karaokeVideo = new VideoView(this);
+        karaokeFrame.addView(karaokeVideo, new FrameLayout.LayoutParams(-1, -1));
+        View shade = new View(this);
+        shade.setBackgroundColor(0x55000000);
+        karaokeFrame.addView(shade, new FrameLayout.LayoutParams(-1, -1));
+
+        LinearLayout lyricsColumn = new LinearLayout(this);
+        lyricsColumn.setOrientation(LinearLayout.VERTICAL);
+        lyricsColumn.setGravity(Gravity.CENTER);
+        lyricsColumn.setPadding(dp(18), dp(18), dp(18), dp(18));
+        FrameLayout.LayoutParams lyricsParams = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+        karaokeFrame.addView(lyricsColumn, lyricsParams);
+        karaokeLyrics = label("♫  Hihintayin ang lyrics…", 28, Color.WHITE, true);
+        karaokeLyrics.setGravity(Gravity.CENTER);
+        karaokeLyrics.setShadowLayer(dp(4), 1, 2, Color.BLACK);
+        lyricsColumn.addView(karaokeLyrics);
+
+        karaokeQueue = label("QUEUE: 0", 15, Color.WHITE, true);
+        karaokeQueue.setPadding(dp(14), dp(9), dp(14), dp(9));
+        karaokeQueue.setBackground(bg(0x990D1830, 24));
+        FrameLayout.LayoutParams queueParams = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+        queueParams.setMargins(0, dp(18), dp(18), 0);
+        karaokeFrame.addView(karaokeQueue, queueParams);
+        karaokeQueue.setOnClickListener(v -> showKaraokeQueue());
+
+        Button showUi = button("◉ Show UI");
+        FrameLayout.LayoutParams showParams = new FrameLayout.LayoutParams(-2, dp(48), Gravity.BOTTOM | Gravity.END);
+        showParams.setMargins(0, 0, dp(18), dp(22));
+        karaokeFrame.addView(showUi, showParams);
+        showUi.setOnClickListener(v -> leaveKaraokeMode());
+
+        TextView songLabel = label("♫  My Offline Karaoke", 14, Color.WHITE, true);
+        songLabel.setPadding(dp(14), dp(8), dp(14), dp(8));
+        songLabel.setBackground(bg(0x990D1830, 18));
+        FrameLayout.LayoutParams songParams = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.START);
+        songParams.setMargins(dp(16), 0, 0, dp(24));
+        karaokeFrame.addView(songLabel, songParams);
+    }
+
+    private void leaveKaraokeMode() {
+        karaokeMode = false;
+        if (karaokeVideo != null) karaokeVideo.pause();
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+        setContentView(normalRoot);
+    }
+
+    private void showKaraokeQueue() {
+        if (queue.isEmpty()) { Toast.makeText(this, "Walang kanta sa queue.", Toast.LENGTH_SHORT).show(); return; }
+        StringBuilder list = new StringBuilder();
+        for (int i = 0; i < queue.size(); i++) list.append(i + 1).append(". ").append(queue.get(i).title).append("\n");
+        new AlertDialog.Builder(this).setTitle("Queue (" + queue.size() + ")")
+            .setMessage(list.toString()).setPositiveButton("OK", null).show();
+    }
 
     private boolean hasFloatingPermission() {
         return android.os.Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(this);
@@ -297,6 +409,7 @@ public class MainActivity extends Activity {
                                 styled.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                             }
                             liveLyricsText.setText(styled);
+                            if (karaokeLyrics != null) karaokeLyrics.setText(styled);
                         }
                     }
                     return;
@@ -812,5 +925,6 @@ public class MainActivity extends Activity {
 
     private void updateQueueText() {
         queueText.setText("Queue: " + queue.size() + " kanta");
+        if (karaokeQueue != null) karaokeQueue.setText("QUEUE: " + queue.size());
     }
 }

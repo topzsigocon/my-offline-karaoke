@@ -68,6 +68,7 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         songDb = new SongDb(this);
         buildUi();
         loadSoundFontSetting();
@@ -140,6 +141,22 @@ public class MainActivity extends Activity {
         subtitle.setGravity(Gravity.CENTER);
         root.addView(subtitle, new LinearLayout.LayoutParams(-1, dp(28)));
 
+        searchInput = new EditText(this);
+        searchInput.setSingleLine(true);
+        searchInput.setHint("Search title o filename");
+        searchInput.setHintTextColor(Color.GRAY);
+        searchInput.setTextColor(Color.WHITE);
+        searchInput.setPadding(dp(12), 0, dp(12), 0);
+        searchInput.setBackground(bg(Color.rgb(36, 47, 70), 10));
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, dp(48));
+        sp.topMargin = dp(8);
+        root.addView(searchInput, sp);
+        searchInput.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s,int st,int c,int a){}
+            public void onTextChanged(CharSequence s,int start,int before,int count){ renderSongs(); }
+            public void afterTextChanged(android.text.Editable e){}
+        });
+
         LinearLayout nowCard = new LinearLayout(this);
         nowCard.setOrientation(LinearLayout.VERTICAL);
         nowCard.setPadding(dp(12), dp(10), dp(12), dp(10));
@@ -197,22 +214,6 @@ public class MainActivity extends Activity {
         soundFontSettings.setOnClickListener(v -> showSoundFontSettings());
         folder.setOnClickListener(v -> chooseFolder());
         next.setOnClickListener(v -> playNextQueued());
-
-        searchInput = new EditText(this);
-        searchInput.setSingleLine(true);
-        searchInput.setHint("Search title o filename");
-        searchInput.setHintTextColor(Color.GRAY);
-        searchInput.setTextColor(Color.WHITE);
-        searchInput.setPadding(dp(12), 0, dp(12), 0);
-        searchInput.setBackground(bg(Color.rgb(36, 47, 70), 10));
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, dp(48));
-        sp.topMargin = dp(8);
-        root.addView(searchInput, sp);
-        searchInput.addTextChangedListener(new android.text.TextWatcher() {
-            public void beforeTextChanged(CharSequence s,int st,int c,int a){}
-            public void onTextChanged(CharSequence s,int start,int before,int count){ renderSongs(); }
-            public void afterTextChanged(android.text.Editable e){}
-        });
 
         statusText = label("Pumili ng folder para i-scan ang MIDI/KAR files.", 12, Color.rgb(170,190,220), false);
         LinearLayout.LayoutParams stp = new LinearLayout.LayoutParams(-1, -2);
@@ -287,8 +288,8 @@ public class MainActivity extends Activity {
                     return;
                 }
                 if (FloatingKaraokeService.CMD_NEXT.equals(command)) { playNextQueued(); return; }
-                if (FloatingKaraokeService.CMD_PAUSE.equals(command)) { sendMidiService(MidiPlaybackService.ACTION_PAUSE_TOGGLE, null, null); return; }
-                if (FloatingKaraokeService.CMD_STOP.equals(command)) { sendMidiService(MidiPlaybackService.ACTION_STOP, null, null); nowPlayingText.setText("NOW PLAYING\nNakahinto"); return; }
+                if (FloatingKaraokeService.CMD_PAUSE.equals(command)) { sendMidiService(MidiPlaybackService.ACTION_PAUSE_TOGGLE, null, null); Toast.makeText(MainActivity.this, "Pause/Resume command natanggap.", Toast.LENGTH_SHORT).show(); return; }
+                if (FloatingKaraokeService.CMD_STOP.equals(command)) { sendMidiService(MidiPlaybackService.ACTION_STOP, null, null); nowPlayingText.setText("NOW PLAYING\nNakahinto"); Toast.makeText(MainActivity.this, "Playback stopped.", Toast.LENGTH_SHORT).show(); return; }
                 if (numberInput != null) numberInput.setText(number == null ? "" : number);
                 if (FloatingKaraokeService.CMD_ADD.equals(command)) findByNumber(true, false);
                 else if (FloatingKaraokeService.CMD_PLAY.equals(command)) findByNumber(false, true);

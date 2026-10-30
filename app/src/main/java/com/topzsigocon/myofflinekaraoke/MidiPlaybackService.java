@@ -92,18 +92,31 @@ public class MidiPlaybackService extends Service {
         playerThread.start();
     }
 
+    /** High-resolution delay loop to reduce timing drift on dense MIDI passages. */
     private boolean waitDelay(long micros) throws InterruptedException {
-        long remaining=micros/1000L;
-        while (remaining > 0 && !stopRequested) {
-            synchronized(gate) {
+        if (micros <= 0) return !stopRequested;
+        long remainingNanos = micros * 1000L;
+        long deadline = System.nanoTime() + remainingNanos;
+        while (!stopRequested) {
+            synchronized (gate) {
                 while (paused && !stopRequested) gate.wait();
-                if (stopRequested) return false;
-                long slice=Math.min(remaining, 40L); long before=SystemClock.elapsedRealtime();
-                gate.wait(slice); long spent=Math.max(0, SystemClock.elapsedRealtime()-before);
-                if (!paused) remaining-=Math.max(spent, slice == 0 ? 0 : 1);
+            }
+            if (stopRequested) return false;
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) return true;
+            // Short parks keep the pause/stop response quick while avoiding 40 ms timing jumps.
+            java.util.concurrent.locks.LockSupport.parkNanos(Math.min(remaining, 1_000_000L));
+            if (Thread.interrupted()) throw new InterruptedException();
+            // When paused, freeze the deadline so the song resumes at the same MIDI position.
+            synchronized (gate) {
+                if (paused && !stopRequested) {
+                    long pauseStart = System.nanoTime();
+                    while (paused && !stopRequested) gate.wait();
+                    deadline += System.nanoTime() - pauseStart;
+                }
             }
         }
-        return !stopRequested;
+        return false;
     }
 
     private byte[] readUri(Uri uri) throws Exception {

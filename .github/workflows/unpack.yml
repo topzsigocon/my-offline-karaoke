@@ -60,7 +60,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: My-Offline-Karaoke-debug-apk
+          name: my-offline-karaoke-debug-apk
           path: app/build/outputs/apk/debug/*.apk
 
 

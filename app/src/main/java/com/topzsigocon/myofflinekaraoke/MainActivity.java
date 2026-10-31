@@ -494,10 +494,15 @@ public class MainActivity extends Activity {
     private void updateLyricsLayout() {
         if (karaokeLyrics == null || karaokeNextLyrics == null || karaokeFrame == null) return;
         int gravity = "Center".equalsIgnoreCase(lyricsPosition) ? Gravity.CENTER_VERTICAL : Gravity.BOTTOM;
-        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) karaokeLyrics.getParent().getParent().getLayoutParams();
+        // karaokeLyrics is a child of lyricsColumn; lyricsColumn is a direct child of karaokeFrame.
+        View lyricsContainer = (View) karaokeLyrics.getParent();
+        if (lyricsContainer == null) return;
+        ViewGroup.LayoutParams rawParams = lyricsContainer.getLayoutParams();
+        if (!(rawParams instanceof FrameLayout.LayoutParams)) return;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) rawParams;
         lp.gravity = Gravity.CENTER_HORIZONTAL | gravity;
         lp.bottomMargin = "Bottom".equalsIgnoreCase(lyricsPosition) ? dp(82) : 0;
-        karaokeLyrics.getParent().getParent().setLayoutParams(lp);
+        lyricsContainer.setLayoutParams(lp);
         if ("Opposing".equalsIgnoreCase(lyricsAlignment)) {
             karaokeLyrics.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
             karaokeNextLyrics.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);

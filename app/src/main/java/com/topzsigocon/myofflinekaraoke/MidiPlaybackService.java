@@ -83,6 +83,7 @@ public class MidiPlaybackService extends Service {
                         lyricIntent.setPackage(getPackageName());
                         lyricIntent.putExtra("lyric", event.lyric);
                         lyricIntent.putExtra("line", event.lyricLine == null ? event.lyric : event.lyricLine);
+                        lyricIntent.putExtra("nextLine", event.nextLyricLine == null ? "" : event.nextLyricLine);
                         lyricIntent.putExtra("highlightStart", event.lyricStart);
                         lyricIntent.putExtra("highlightEnd", event.lyricEnd);
                         sendBroadcast(lyricIntent);
@@ -114,8 +115,15 @@ public class MidiPlaybackService extends Service {
             if (stopRequested) return false;
             long remaining = deadline - System.nanoTime();
             if (remaining <= 0) return true;
-            // Short parks keep the pause/stop response quick while avoiding 40 ms timing jumps.
-            java.util.concurrent.locks.LockSupport.parkNanos(Math.min(remaining, 1_000_000L));
+            // Sleep most of the interval, then use a very short precision tail to reduce
+            // Android scheduler wake-up jitter on dense MIDI passages.
+            if (remaining > 400_000L) {
+                java.util.concurrent.locks.LockSupport.parkNanos(Math.min(remaining - 200_000L, 5_000_000L));
+            } else {
+                while (!stopRequested && !paused && System.nanoTime() < deadline) {
+                    // short precision tail (maximum 0.4 ms)
+                }
+            }
             if (Thread.interrupted()) throw new InterruptedException();
             // When paused, freeze the deadline so the song resumes at the same MIDI position.
             synchronized (gate) {

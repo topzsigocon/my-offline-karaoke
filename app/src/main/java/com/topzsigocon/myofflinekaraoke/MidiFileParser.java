@@ -17,6 +17,7 @@ final class MidiFileParser {
         final String lyric;
         long micros;
         String lyricLine;
+        String nextLyricLine;
         int lyricStart = -1;
         int lyricEnd = -1;
         Event(long tick, byte[] message, int tempo) { this(tick, message, tempo, null); }
@@ -55,19 +56,43 @@ final class MidiFileParser {
         return all;
     }
 
-    /** Groups word/fragment lyric meta-events into complete display lines. */
+    /** Groups word/fragment lyric meta-events into complete display lines and links the next line. */
     private static void annotateLyricLines(List<Event> events) {
+        List<List<Event>> lines = new ArrayList<>();
         List<Event> pending = new ArrayList<>();
         for (Event event : events) {
             if (event.lyric == null) continue;
             if (isLineBreak(event.lyric)) {
-                assignLine(pending);
-                pending.clear();
+                if (!pending.isEmpty()) { lines.add(new ArrayList<>(pending)); pending.clear(); }
             } else {
                 pending.add(event);
             }
         }
-        assignLine(pending);
+        if (!pending.isEmpty()) lines.add(new ArrayList<>(pending));
+        List<String> textLines = new ArrayList<>();
+        for (List<Event> words : lines) textLines.add(buildLine(words));
+        for (int li = 0; li < lines.size(); li++) {
+            List<Event> words = lines.get(li);
+            String full = textLines.get(li);
+            if (full.isEmpty()) continue;
+            int cursor = 0;
+            for (Event word : words) {
+                String part = word.lyric;
+                int at = full.indexOf(part, cursor);
+                if (at < 0) at = cursor;
+                word.lyricLine = full;
+                word.lyricStart = Math.max(0, Math.min(full.length(), at));
+                word.lyricEnd = Math.max(word.lyricStart, Math.min(full.length(), at + part.length()));
+                word.nextLyricLine = li + 1 < textLines.size() ? textLines.get(li + 1) : "";
+                cursor = Math.min(full.length(), at + part.length());
+            }
+        }
+    }
+
+    private static String buildLine(List<Event> words) {
+        StringBuilder line = new StringBuilder();
+        for (Event word : words) line.append(word.lyric);
+        return line.toString().trim();
     }
 
     private static boolean isLineBreak(String value) {

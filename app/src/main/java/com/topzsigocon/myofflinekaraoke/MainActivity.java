@@ -22,7 +22,11 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.FrameLayout;
-import android.widget.VideoView;
+import android.view.TextureView;
+import android.graphics.SurfaceTexture;
+import android.graphics.Matrix;
+import android.media.MediaPlayer;
+import android.view.Surface;
 import android.widget.Toast;
 import android.app.AlertDialog;
 import android.provider.Settings;
@@ -63,8 +67,15 @@ public class MainActivity extends Activity {
     private static final String PREF_VIDEO_URI = "karaoke_background_video_uri";
     private Uri backgroundVideoUri;
     private FrameLayout karaokeFrame;
-    private VideoView karaokeVideo;
-    private TextView karaokeLyrics, karaokeQueue;
+    private TextureView karaokeVideo;
+    private MediaPlayer backgroundPlayer;
+    private Surface videoSurface;
+    private TextView karaokeLyrics, karaokeNextLyrics, karaokeQueue, karaokeSongTitle;
+    private static final String PREF_LYRICS_POSITION = "lyrics_position";
+    private static final String PREF_LYRICS_ALIGNMENT = "lyrics_alignment";
+    private String lyricsPosition = "Bottom";
+    private String lyricsAlignment = "Centered";
+    private String currentSongTitle = "My Offline Karaoke";
     private View normalRoot;
     private boolean karaokeMode = false;
 
@@ -81,6 +92,8 @@ public class MainActivity extends Activity {
         getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         songDb = new SongDb(this);
         buildUi();
+        lyricsPosition = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_LYRICS_POSITION, "Center");
+        lyricsAlignment = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_LYRICS_ALIGNMENT, "Centered");
         loadSoundFontSetting();
         String savedVideo = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_VIDEO_URI, null);
         if (savedVideo != null) try { backgroundVideoUri = Uri.parse(savedVideo); } catch (Exception ignored) {}
@@ -274,6 +287,30 @@ public class MainActivity extends Activity {
         Button lyricsCheck = button("Lyrics Check");
         settingsPage.addView(lyricsCheck, new LinearLayout.LayoutParams(-1, dp(46)));
         lyricsCheck.setOnClickListener(v -> showLyricsForSelectedSong());
+        Button lyricsPositionButton = button("Lyrics Position: " + lyricsPosition);
+        settingsPage.addView(lyricsPositionButton, new LinearLayout.LayoutParams(-1, dp(46)));
+        lyricsPositionButton.setOnClickListener(v -> {
+            String[] options = {"Center", "Bottom"};
+            new AlertDialog.Builder(this).setTitle("Lyrics Position")
+                .setItems(options, (d, which) -> {
+                    lyricsPosition = options[which];
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_LYRICS_POSITION, lyricsPosition).apply();
+                    lyricsPositionButton.setText("Lyrics Position: " + lyricsPosition);
+                    updateLyricsLayout();
+                }).show();
+        });
+        Button lyricsAlignmentButton = button("Lyrics Alignment: " + lyricsAlignment);
+        settingsPage.addView(lyricsAlignmentButton, new LinearLayout.LayoutParams(-1, dp(46)));
+        lyricsAlignmentButton.setOnClickListener(v -> {
+            String[] options = {"Centered", "Opposing (Left / Right)"};
+            new AlertDialog.Builder(this).setTitle("Lyrics Alignment")
+                .setItems(options, (d, which) -> {
+                    lyricsAlignment = which == 0 ? "Centered" : "Opposing";
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_LYRICS_ALIGNMENT, lyricsAlignment).apply();
+                    lyricsAlignmentButton.setText("Lyrics Alignment: " + lyricsAlignment);
+                    updateLyricsLayout();
+                }).show();
+        });
         TextView appearance = label("UI / APPEARANCE", 15, Color.WHITE, true);
         LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-1, dp(38)); ap.topMargin = dp(12);
         settingsPage.addView(appearance, ap);
@@ -331,36 +368,55 @@ public class MainActivity extends Activity {
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
             View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
         setContentView(karaokeFrame);
-        if (backgroundVideoUri != null) {
-            try {
-                karaokeVideo.setVideoURI(backgroundVideoUri);
-                karaokeVideo.setOnPreparedListener(mp -> { mp.setLooping(true); karaokeVideo.start(); });
-            } catch (Exception e) { Toast.makeText(this, "Hindi mabuksan ang background video.", Toast.LENGTH_LONG).show(); }
-        }
+        if (karaokeVideo.isAvailable()) startBackgroundVideo(karaokeVideo.getSurfaceTexture());
         karaokeQueue.setText("QUEUE: " + queue.size());
+        if (karaokeSongTitle != null) karaokeSongTitle.setText(currentSongTitle);
         startFloatingControllerIfAllowed();
     }
 
     private void buildKaraokeMode() {
         karaokeFrame = new FrameLayout(this);
         karaokeFrame.setBackgroundColor(Color.BLACK);
-        karaokeVideo = new VideoView(this);
+        karaokeVideo = new TextureView(this);
+        karaokeVideo.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
+            @Override public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) { startBackgroundVideo(surface); }
+            @Override public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) { applyVideoCenterCrop(width, height); }
+            @Override public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) { return true; }
+            @Override public void onSurfaceTextureUpdated(SurfaceTexture surface) {}
+        });
         karaokeFrame.addView(karaokeVideo, new FrameLayout.LayoutParams(-1, -1));
         View shade = new View(this);
         shade.setBackgroundColor(0x55000000);
         karaokeFrame.addView(shade, new FrameLayout.LayoutParams(-1, -1));
 
+        karaokeSongTitle = label(currentSongTitle, 18, Color.WHITE, true);
+        karaokeSongTitle.setGravity(Gravity.CENTER);
+        karaokeSongTitle.setPadding(dp(12), dp(8), dp(12), dp(8));
+        karaokeSongTitle.setBackground(bg(0x990D1830, 18));
+        FrameLayout.LayoutParams titleParams = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        titleParams.setMargins(dp(18), dp(18), dp(118), 0);
+        karaokeFrame.addView(karaokeSongTitle, titleParams);
+
         LinearLayout lyricsColumn = new LinearLayout(this);
         lyricsColumn.setOrientation(LinearLayout.VERTICAL);
         lyricsColumn.setGravity(Gravity.CENTER);
-        lyricsColumn.setPadding(dp(18), dp(18), dp(18), dp(18));
+        lyricsColumn.setPadding(dp(18), dp(14), dp(18), dp(14));
+        karaokeLyrics = label("Hihintayin ang lyrics…", 25, Color.WHITE, true);
+        karaokeLyrics.setGravity(Gravity.CENTER);
+        karaokeLyrics.setShadowLayer(dp(4), 1, 2, Color.BLACK);
+        karaokeLyrics.setMaxLines(2);
+        karaokeLyrics.setPadding(dp(4), dp(4), dp(4), dp(4));
+        lyricsColumn.addView(karaokeLyrics, new LinearLayout.LayoutParams(-1, -2));
+        karaokeNextLyrics = label("", 22, Color.WHITE, true);
+        karaokeNextLyrics.setGravity(Gravity.CENTER);
+        karaokeNextLyrics.setShadowLayer(dp(4), 1, 2, Color.BLACK);
+        karaokeNextLyrics.setMaxLines(2);
+        karaokeNextLyrics.setPadding(dp(4), dp(4), dp(4), dp(4));
+        lyricsColumn.addView(karaokeNextLyrics, new LinearLayout.LayoutParams(-1, -2));
         FrameLayout.LayoutParams lyricsParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         lyricsParams.setMargins(dp(12), 0, dp(12), dp(82));
         karaokeFrame.addView(lyricsColumn, lyricsParams);
-        karaokeLyrics = label("Hihintayin ang lyrics…", 25, Color.rgb(255, 210, 75), true);
-        karaokeLyrics.setGravity(Gravity.CENTER);
-        karaokeLyrics.setShadowLayer(dp(4), 1, 2, Color.BLACK);
-        lyricsColumn.addView(karaokeLyrics);
+        updateLyricsLayout();
 
         karaokeQueue = label("QUEUE: 0", 15, Color.WHITE, true);
         karaokeQueue.setPadding(dp(14), dp(9), dp(14), dp(9));
@@ -376,17 +432,84 @@ public class MainActivity extends Activity {
         karaokeFrame.addView(showUi, showParams);
         showUi.setOnClickListener(v -> leaveKaraokeMode());
 
-        TextView songLabel = label("♫  My Offline Karaoke", 14, Color.WHITE, true);
-        songLabel.setPadding(dp(14), dp(8), dp(14), dp(8));
-        songLabel.setBackground(bg(0x990D1830, 18));
-        FrameLayout.LayoutParams songParams = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.START);
-        songParams.setMargins(dp(16), 0, 0, dp(24));
-        karaokeFrame.addView(songLabel, songParams);
+    }
+
+    private void startBackgroundVideo(SurfaceTexture texture) {
+        if (backgroundVideoUri == null || texture == null || isFinishing()) return;
+        try {
+            if (backgroundPlayer != null) {
+                if (backgroundPlayer.isPlaying()) return;
+                backgroundPlayer.start();
+                return;
+            }
+            backgroundPlayer = new MediaPlayer();
+            backgroundPlayer.setDataSource(this, backgroundVideoUri);
+            videoSurface = new Surface(texture);
+            backgroundPlayer.setSurface(videoSurface);
+            backgroundPlayer.setVolume(0f, 0f);
+            backgroundPlayer.setLooping(true);
+            backgroundPlayer.setOnPreparedListener(mp -> {
+                applyVideoCenterCrop(karaokeVideo.getWidth(), karaokeVideo.getHeight());
+                mp.start();
+            });
+            backgroundPlayer.setOnVideoSizeChangedListener((mp, width, height) -> applyVideoCenterCrop(karaokeVideo.getWidth(), karaokeVideo.getHeight()));
+            backgroundPlayer.setOnErrorListener((mp, what, extra) -> {
+                Toast.makeText(this, "Hindi mabuksan ang background video.", Toast.LENGTH_LONG).show();
+                releaseBackgroundVideo();
+                return true;
+            });
+            backgroundPlayer.prepareAsync();
+        } catch (Exception e) {
+            Toast.makeText(this, "Video error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            releaseBackgroundVideo();
+        }
+    }
+
+    /** Center-crop the video without stretching its original aspect ratio. */
+    private void applyVideoCenterCrop(int viewWidth, int viewHeight) {
+        if (backgroundPlayer == null || karaokeVideo == null || viewWidth <= 0 || viewHeight <= 0) return;
+        int videoWidth = backgroundPlayer.getVideoWidth();
+        int videoHeight = backgroundPlayer.getVideoHeight();
+        if (videoWidth <= 0 || videoHeight <= 0) return;
+        float scale = Math.max((float)viewWidth / videoWidth, (float)viewHeight / videoHeight);
+        float scaledWidth = videoWidth * scale;
+        float scaledHeight = videoHeight * scale;
+        float dx = (viewWidth - scaledWidth) / 2f;
+        float dy = (viewHeight - scaledHeight) / 2f;
+        Matrix matrix = new Matrix();
+        matrix.setScale(scale, scale);
+        matrix.postTranslate(dx, dy);
+        karaokeVideo.setTransform(matrix);
+    }
+
+    private void releaseBackgroundVideo() {
+        if (backgroundPlayer != null) {
+            try { backgroundPlayer.stop(); } catch (Exception ignored) {}
+            try { backgroundPlayer.release(); } catch (Exception ignored) {}
+            backgroundPlayer = null;
+        }
+        if (videoSurface != null) { try { videoSurface.release(); } catch (Exception ignored) {} videoSurface = null; }
+    }
+
+    private void updateLyricsLayout() {
+        if (karaokeLyrics == null || karaokeNextLyrics == null || karaokeFrame == null) return;
+        int gravity = "Center".equalsIgnoreCase(lyricsPosition) ? Gravity.CENTER_VERTICAL : Gravity.BOTTOM;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) karaokeLyrics.getParent().getParent().getLayoutParams();
+        lp.gravity = Gravity.CENTER_HORIZONTAL | gravity;
+        lp.bottomMargin = "Bottom".equalsIgnoreCase(lyricsPosition) ? dp(82) : 0;
+        karaokeLyrics.getParent().getParent().setLayoutParams(lp);
+        if ("Opposing".equalsIgnoreCase(lyricsAlignment)) {
+            karaokeLyrics.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+            karaokeNextLyrics.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        } else {
+            karaokeLyrics.setGravity(Gravity.CENTER);
+            karaokeNextLyrics.setGravity(Gravity.CENTER);
+        }
     }
 
     private void leaveKaraokeMode() {
         karaokeMode = false;
-        if (karaokeVideo != null) karaokeVideo.pause();
+        releaseBackgroundVideo();
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
         setContentView(normalRoot);
     }
@@ -443,20 +566,21 @@ public class MainActivity extends Activity {
                 if (MidiPlaybackService.ACTION_LYRIC.equals(intent.getAction())) {
                     String lyric = intent.getStringExtra("lyric");
                     String line = intent.getStringExtra("line");
+                    String nextLine = intent.getStringExtra("nextLine");
                     int start = intent.getIntExtra("highlightStart", -1);
                     int end = intent.getIntExtra("highlightEnd", -1);
-                    if (liveLyricsText != null && lyric != null) {
-                        if (line == null || line.trim().isEmpty()) {
-                            liveLyricsText.setText("♫");
-                        } else {
-                            android.text.SpannableString styled = new android.text.SpannableString(line);
-                            if (start >= 0 && end > start && end <= styled.length()) {
-                                styled.setSpan(new android.text.style.ForegroundColorSpan(Color.rgb(255, 220, 80)), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                                styled.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                            }
-                            liveLyricsText.setText(styled);
-                            if (karaokeLyrics != null) karaokeLyrics.setText(styled);
+                    if (lyric != null && (line == null || line.trim().isEmpty())) return; // ignore rests/line-break markers
+                    if (line != null && !line.trim().isEmpty()) {
+                        android.text.SpannableString styled = new android.text.SpannableString(line);
+                        int passedEnd = end > 0 ? Math.min(end, styled.length()) : 0;
+                        if (passedEnd > 0) styled.setSpan(new android.text.style.ForegroundColorSpan(Color.rgb(255, 205, 55)), 0, passedEnd, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                        if (start >= 0 && end > start && end <= styled.length()) {
+                            styled.setSpan(new android.text.style.ForegroundColorSpan(Color.rgb(255, 215, 65)), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                            styled.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                         }
+                        if (liveLyricsText != null) liveLyricsText.setText(styled);
+                        if (karaokeLyrics != null) karaokeLyrics.setText(styled);
+                        if (karaokeNextLyrics != null) karaokeNextLyrics.setText(nextLine == null ? "" : nextLine);
                     }
                     return;
                 }
@@ -537,6 +661,7 @@ public class MainActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == PICK_BACKGROUND_VIDEO && resultCode == RESULT_OK && data != null && data.getData() != null) {
             backgroundVideoUri = data.getData();
+            releaseBackgroundVideo();
             try { getContentResolver().takePersistableUriPermission(backgroundVideoUri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_VIDEO_URI, backgroundVideoUri.toString()).apply();
             Toast.makeText(this, "Nai-save ang shared background video.", Toast.LENGTH_SHORT).show();
@@ -856,6 +981,7 @@ public class MainActivity extends Activity {
         scanExecutor.shutdownNow();
         if (floatingRemoteReceiver != null) { try { unregisterReceiver(floatingRemoteReceiver); } catch (Exception ignored) {} }
         if (songDb != null) songDb.close();
+        releaseBackgroundVideo();
         super.onDestroy();
     }
 
@@ -893,8 +1019,18 @@ public class MainActivity extends Activity {
             TextView filename = label(song.fileName, 11, Color.rgb(160,180,210), false);
             card.addView(filename);
             card.setOnClickListener(v -> {
-                numberInput.setText(song.number);
-                numberInput.setSelection(numberInput.getText().length());
+                String[] actions = {"Add to Queue", "Play Now"};
+                new AlertDialog.Builder(this).setTitle(song.number + " — " + song.title)
+                    .setItems(actions, (dialog, which) -> {
+                        if (which == 0) {
+                            queue.add(song);
+                            updateQueueText();
+                            Toast.makeText(this, "Naidagdag sa queue: " + song.title, Toast.LENGTH_SHORT).show();
+                        } else {
+                            playSong(song);
+                            showTab(1);
+                        }
+                    }).show();
             });
             shown++;
         }
@@ -957,6 +1093,8 @@ public class MainActivity extends Activity {
     }
 
     private void playSong(Song song) {
+        currentSongTitle = song.title;
+        if (karaokeSongTitle != null) karaokeSongTitle.setText(currentSongTitle);
         nowPlayingText.setText("NOW PLAYING\n" + song.number + " — " + song.title + "\nBuilt-in MIDI soundbank");
         if (liveLyricsText != null) liveLyricsText.setText("♫  Naghahanda ng lyrics…");
         sendMidiService(MidiPlaybackService.ACTION_PLAY, song.uri, song.title + " — " + song.number);

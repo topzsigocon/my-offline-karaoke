@@ -75,6 +75,10 @@ public class MainActivity extends Activity {
     private static final String PREF_LYRICS_ALIGNMENT = "lyrics_alignment";
     private String lyricsPosition = "Bottom";
     private String lyricsAlignment = "Centered";
+    private static final String PREF_VIDEO_SCALE_MODE = "video_scale_mode";
+    private static final String PREF_ORIENTATION_MODE = "screen_orientation_mode";
+    private String videoScaleMode = "Fill";
+    private String orientationMode = "Auto";
     private String currentSongTitle = "My Offline Karaoke";
     private View normalRoot;
     private boolean karaokeMode = false;
@@ -91,9 +95,12 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         songDb = new SongDb(this);
-        buildUi();
         lyricsPosition = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_LYRICS_POSITION, "Center");
         lyricsAlignment = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_LYRICS_ALIGNMENT, "Centered");
+        videoScaleMode = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_VIDEO_SCALE_MODE, "Fill");
+        orientationMode = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_ORIENTATION_MODE, "Auto");
+        buildUi();
+        applyOrientationMode();
         loadSoundFontSetting();
         String savedVideo = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_VIDEO_URI, null);
         if (savedVideo != null) try { backgroundVideoUri = Uri.parse(savedVideo); } catch (Exception ignored) {}
@@ -279,6 +286,19 @@ public class MainActivity extends Activity {
         Button chooseVideo = button("🎞  Pumili ng Shared Background Video");
         settingsPage.addView(chooseVideo, new LinearLayout.LayoutParams(-1, dp(50)));
         chooseVideo.setOnClickListener(v -> chooseBackgroundVideo());
+        Button orientationButton = button("Screen Orientation: " + orientationMode);
+        settingsPage.addView(orientationButton, new LinearLayout.LayoutParams(-1, dp(50)));
+        orientationButton.setOnClickListener(v -> {
+            String[] options = {"Auto", "Portrait", "Landscape"};
+            new AlertDialog.Builder(this).setTitle("Screen Orientation")
+                .setItems(options, (dialog, which) -> {
+                    orientationMode = options[which];
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .putString(PREF_ORIENTATION_MODE, orientationMode).apply();
+                    orientationButton.setText("Screen Orientation: " + orientationMode);
+                    applyOrientationMode();
+                }).show();
+        });
         Button soundFontSettings = button("♫  SoundFont Settings");
         settingsPage.addView(soundFontSettings, new LinearLayout.LayoutParams(-1, dp(50)));
         soundFontSettings.setOnClickListener(v -> showSoundFontSettings());
@@ -352,6 +372,23 @@ public class MainActivity extends Activity {
 
 
 
+    private void applyOrientationMode() {
+        if ("Portrait".equalsIgnoreCase(orientationMode)) {
+            setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        } else if ("Landscape".equalsIgnoreCase(orientationMode)) {
+            setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        } else {
+            setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
+        }
+    }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (karaokeVideo != null) {
+            karaokeVideo.post(() -> applyVideoCenterCrop(karaokeVideo.getWidth(), karaokeVideo.getHeight()));
+        }
+    }
+
     private void chooseBackgroundVideo() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -381,7 +418,14 @@ public class MainActivity extends Activity {
         karaokeVideo.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
             @Override public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) { startBackgroundVideo(surface); }
             @Override public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) { applyVideoCenterCrop(width, height); }
-            @Override public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) { return true; }
+            @Override public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
+                if (videoSurface != null) {
+                    try { if (backgroundPlayer != null) backgroundPlayer.setSurface(null); } catch (Exception ignored) {}
+                    try { videoSurface.release(); } catch (Exception ignored) {}
+                    videoSurface = null;
+                }
+                return true;
+            }
             @Override public void onSurfaceTextureUpdated(SurfaceTexture surface) {}
         });
         karaokeFrame.addView(karaokeVideo, new FrameLayout.LayoutParams(-1, -1));
@@ -396,6 +440,18 @@ public class MainActivity extends Activity {
         FrameLayout.LayoutParams titleParams = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         titleParams.setMargins(dp(18), dp(18), dp(118), 0);
         karaokeFrame.addView(karaokeSongTitle, titleParams);
+
+        Button videoScaleButton = button(videoScaleMode.equals("Fit") ? "⛶ Fit" : "⛶ Fill");
+        FrameLayout.LayoutParams scaleButtonParams = new FrameLayout.LayoutParams(-2, dp(42), Gravity.TOP | Gravity.START);
+        scaleButtonParams.setMargins(dp(14), dp(82), 0, 0);
+        karaokeFrame.addView(videoScaleButton, scaleButtonParams);
+        videoScaleButton.setOnClickListener(v -> {
+            videoScaleMode = "Fill".equals(videoScaleMode) ? "Fit" : "Fill";
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putString(PREF_VIDEO_SCALE_MODE, videoScaleMode).apply();
+            videoScaleButton.setText("⛶ " + videoScaleMode);
+            applyVideoCenterCrop(karaokeVideo.getWidth(), karaokeVideo.getHeight());
+        });
 
         LinearLayout lyricsColumn = new LinearLayout(this);
         lyricsColumn.setOrientation(LinearLayout.VERTICAL);
@@ -438,8 +494,13 @@ public class MainActivity extends Activity {
         if (backgroundVideoUri == null || texture == null || isFinishing()) return;
         try {
             if (backgroundPlayer != null) {
-                if (backgroundPlayer.isPlaying()) return;
-                backgroundPlayer.start();
+                if (videoSurface != null) {
+                    try { videoSurface.release(); } catch (Exception ignored) {}
+                }
+                videoSurface = new Surface(texture);
+                backgroundPlayer.setSurface(videoSurface);
+                applyVideoCenterCrop(karaokeVideo.getWidth(), karaokeVideo.getHeight());
+                if (!backgroundPlayer.isPlaying()) backgroundPlayer.start();
                 return;
             }
             backgroundPlayer = new MediaPlayer();
@@ -471,7 +532,11 @@ public class MainActivity extends Activity {
         int videoWidth = backgroundPlayer.getVideoWidth();
         int videoHeight = backgroundPlayer.getVideoHeight();
         if (videoWidth <= 0 || videoHeight <= 0) return;
-        float scale = Math.max((float)viewWidth / videoWidth, (float)viewHeight / videoHeight);
+        // Fill = center-crop to cover the screen; Fit = show the complete frame.
+        // Both modes preserve the source aspect ratio (never stretch).
+        float scale = "Fit".equals(videoScaleMode)
+            ? Math.min((float)viewWidth / videoWidth, (float)viewHeight / videoHeight)
+            : Math.max((float)viewWidth / videoWidth, (float)viewHeight / videoHeight);
         float scaledWidth = videoWidth * scale;
         float scaledHeight = videoHeight * scale;
         float dx = (viewWidth - scaledWidth) / 2f;
